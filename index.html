@@ -1,30 +1,43 @@
 <!DOCTYPE html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Teachable Machine Pose Model</title>
-    <link rel="stylesheet" href="./css/style.css" />
-  </head>
-  <body>
-    <h1>Teachable Machine Pose Model</h1>
-    <div class="button-container">
-      <button type="button" id="startBtn" onclick="init()">Start</button>
-      <button type="button" id="stopBtn" onclick="stop()" disabled>Stop</button>
-    </div>
-    <div class="canvas-container">
-      <canvas id="canvas"></canvas>
-      <div id="max-prediction"></div>
-    </div>
-    <div id="label-container"></div>
 
-    <!-- Teachable Machine 라이브러리 -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Falling Fruit Catcher</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
 
-    <!-- 애플리케이션 모듈 -->
-    <script src="./js/stabilizer.js"></script>
-    <script src="./js/poseEngine.js"></script>
-    <script src="./js/gameEngine.js"></script>
-    <script src="./js/main.js"></script>
-  </body>
+<body>
+  <div class="container">
+    <header>
+      <h1>🍎 Falling Fruit Catcher 🍌</h1>
+      <p>몸을 움직여 바구니를 이동하고 과일을 받으세요! (폭탄💣 조심)</p>
+    </header>
+
+    <div class="game-area">
+      <div class="canvas-wrapper">
+        <canvas id="canvas"></canvas>
+        <div id="max-prediction" class="overlay-text">대기 중...</div>
+      </div>
+      <div id="label-container"></div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn" onclick="init()">게임 시작 (카메라 켜기)</button>
+      <button id="stopBtn" onclick="stop()" disabled>종료</button>
+    </div>
+  </div>
+
+  <!-- TensorFlow.js & Teachable Machine Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+
+  <!-- Custom Scripts -->
+  <script src="js/stabilizer.js"></script>
+  <script src="js/poseEngine.js"></script>
+  <script src="js/gameEngine.js"></script>
+  <script src="js/main.js"></script>
+</body>
+
 </html>

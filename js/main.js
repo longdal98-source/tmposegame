@@ -1,8 +1,6 @@
 /**
  * main.js
  * 포즈 인식과 게임 로직을 초기화하고 서로 연결하는 진입점
- *
- * PoseEngine, GameEngine, Stabilizer를 조합하여 애플리케이션을 구동
  */
 
 // 전역 변수
@@ -22,10 +20,14 @@ async function init() {
   startBtn.disabled = true;
 
   try {
+    // 0. GameEngine 초기화 먼저 (설정 로드 등을 위해)
+    gameEngine = new GameEngine();
+
     // 1. PoseEngine 초기화
     poseEngine = new PoseEngine("./my_model/");
+    // 캔버스 크기를 500x500으로 키움 (게임 화면 확보)
     const { maxPredictions, webcam } = await poseEngine.init({
-      size: 200,
+      size: 500,
       flip: true
     });
 
@@ -35,28 +37,28 @@ async function init() {
       smoothingFrames: 3
     });
 
-    // 3. GameEngine 초기화 (선택적)
-    gameEngine = new GameEngine();
-
-    // 4. 캔버스 설정
+    // 3. 캔버스 설정
     const canvas = document.getElementById("canvas");
-    canvas.width = 200;
-    canvas.height = 200;
+    canvas.width = 500;
+    canvas.height = 500;
     ctx = canvas.getContext("2d");
 
-    // 5. Label Container 설정
+    // 4. Label Container 설정
     labelContainer = document.getElementById("label-container");
-    labelContainer.innerHTML = ""; // 초기화
+    labelContainer.innerHTML = "";
     for (let i = 0; i < maxPredictions; i++) {
       labelContainer.appendChild(document.createElement("div"));
     }
 
-    // 6. PoseEngine 콜백 설정
+    // 5. PoseEngine 콜백 설정
     poseEngine.setPredictionCallback(handlePrediction);
     poseEngine.setDrawCallback(drawPose);
 
-    // 7. PoseEngine 시작
+    // 6. PoseEngine 시작
     poseEngine.start();
+
+    // 7. 게임 자동 시작 (바로 테스트 가능하게)
+    startGameMode();
 
     stopBtn.disabled = false;
   } catch (error) {
@@ -77,7 +79,8 @@ function stop() {
     poseEngine.stop();
   }
 
-  if (gameEngine && gameEngine.isGameActive) {
+  if (gameEngine) // gameEngine.isGameActive check is inside stop usually, but safe to call
+  {
     gameEngine.stop();
   }
 
@@ -91,8 +94,6 @@ function stop() {
 
 /**
  * 예측 결과 처리 콜백
- * @param {Array} predictions - TM 모델의 예측 결과
- * @param {Object} pose - PoseNet 포즈 데이터
  */
 function handlePrediction(predictions, pose) {
   // 1. Stabilizer로 예측 안정화
@@ -109,50 +110,45 @@ function handlePrediction(predictions, pose) {
   const maxPredictionDiv = document.getElementById("max-prediction");
   maxPredictionDiv.innerHTML = stabilized.className || "감지 중...";
 
-  // 4. GameEngine에 포즈 전달 (게임 모드일 경우)
+  // 4. GameEngine에 포즈 전달
   if (gameEngine && gameEngine.isGameActive && stabilized.className) {
     gameEngine.onPoseDetected(stabilized.className);
   }
 }
 
 /**
- * 포즈 그리기 콜백
- * @param {Object} pose - PoseNet 포즈 데이터
+ * 포즈 및 게임 그리기 콜백 (매 프레임 호출됨)
  */
 function drawPose(pose) {
+  // 1. 웹캠 영상 그리기
   if (poseEngine.webcam && poseEngine.webcam.canvas) {
     ctx.drawImage(poseEngine.webcam.canvas, 0, 0);
 
-    // 키포인트와 스켈레톤 그리기
+    // 키포인트 그리기 (선택)
     if (pose) {
       const minPartConfidence = 0.5;
       tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
       tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
     }
   }
+
+  // 2. 게임 엔진 업데이트 및 그리기 (오버레이)
+  if (gameEngine && gameEngine.isGameActive) {
+    // timestamp를 전달하여 프레임 기반 애니메이션 처리
+    gameEngine.update(performance.now());
+    gameEngine.draw(ctx);
+  }
 }
 
-// 게임 모드 시작 함수 (선택적 - 향후 확장용)
-function startGameMode(config) {
-  if (!gameEngine) {
-    console.warn("GameEngine이 초기화되지 않았습니다.");
-    return;
-  }
+function startGameMode() {
+  if (!gameEngine) return;
 
-  gameEngine.setCommandChangeCallback((command) => {
-    console.log("새로운 명령:", command);
-    // UI 업데이트 로직 추가 가능
+  // 게임 시작 설정
+  gameEngine.start({
+    timeLimit: 60,
+    width: 500,
+    height: 500
   });
 
-  gameEngine.setScoreChangeCallback((score, level) => {
-    console.log(`점수: ${score}, 레벨: ${level}`);
-    // UI 업데이트 로직 추가 가능
-  });
-
-  gameEngine.setGameEndCallback((finalScore, finalLevel) => {
-    console.log(`게임 종료! 최종 점수: ${finalScore}, 최종 레벨: ${finalLevel}`);
-    alert(`게임 종료!\n최종 점수: ${finalScore}\n최종 레벨: ${finalLevel}`);
-  });
-
-  gameEngine.start(config);
+  console.log("게임 모드 시작됨");
 }

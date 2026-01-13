@@ -1,9 +1,6 @@
 /**
  * gameEngine.js
- * 게임 단계, 명령, 점수, 제한시간 등 게임 규칙 전체를 담당
- *
- * 포즈 인식을 활용한 게임 로직을 관리하는 엔진
- * (현재는 기본 템플릿이므로 향후 게임 로직 추가 가능)
+ * "하늘에서 떨어지는 과일 받기" 게임 로직
  */
 
 class GameEngine {
@@ -11,32 +8,51 @@ class GameEngine {
     this.score = 0;
     this.level = 1;
     this.timeLimit = 0;
-    this.currentCommand = null;
     this.isGameActive = false;
     this.gameTimer = null;
-    this.onCommandChange = null; // 명령 변경 콜백
-    this.onScoreChange = null; // 점수 변경 콜백
-    this.onGameEnd = null; // 게임 종료 콜백
+
+    // Callbacks
+    this.onScoreChange = null;
+    this.onGameEnd = null;
+
+    // Game Objects
+    this.playerPos = "Center"; // Left, Center, Right
+    this.items = []; // falling items
+    this.lastItemTime = 0;
+    this.itemInterval = 1500; // ms
+    this.itemSpeed = 2; // px per frame
+
+    // Canvas properties (will be set on start)
+    this.canvasWidth = 0;
+    this.canvasHeight = 0;
+
+    // Assets (Simple shapes for now, can be images)
+    this.colors = {
+      Left: "#FFD700",   // Gold
+      Center: "#87CEEB", // SkyBlue
+      Right: "#FF69B4"   // HotPink
+    };
   }
 
   /**
    * 게임 시작
-   * @param {Object} config - 게임 설정 { timeLimit, commands }
+   * @param {Object} config - { timeLimit, width, height }
    */
   start(config = {}) {
     this.isGameActive = true;
     this.score = 0;
     this.level = 1;
-    this.timeLimit = config.timeLimit || 60; // 기본 60초
-    this.commands = config.commands || []; // 게임 명령어 배열
+    this.timeLimit = config.timeLimit || 60;
+    this.canvasWidth = config.width || 400; // Default width
+    this.canvasHeight = config.height || 400; // Default height
+
+    this.items = [];
+    this.playerPos = "Center";
+    this.itemSpeed = 2;
+    this.itemInterval = 1500;
 
     if (this.timeLimit > 0) {
       this.startTimer();
-    }
-
-    // 첫 번째 명령 발급 (게임 모드일 경우)
-    if (this.commands.length > 0) {
-      this.issueNewCommand();
     }
   }
 
@@ -53,21 +69,18 @@ class GameEngine {
   }
 
   /**
-   * 타이머 시작
+   * 타이머 시작 (초 단위 감소)
    */
   startTimer() {
+    this.clearTimer();
     this.gameTimer = setInterval(() => {
       this.timeLimit--;
-
       if (this.timeLimit <= 0) {
         this.stop();
       }
     }, 1000);
   }
 
-  /**
-   * 타이머 정리
-   */
   clearTimer() {
     if (this.gameTimer) {
       clearInterval(this.gameTimer);
@@ -76,43 +89,101 @@ class GameEngine {
   }
 
   /**
-   * 새로운 명령 발급
-   */
-  issueNewCommand() {
-    if (this.commands.length === 0) return;
-
-    const randomIndex = Math.floor(Math.random() * this.commands.length);
-    this.currentCommand = this.commands[randomIndex];
-
-    if (this.onCommandChange) {
-      this.onCommandChange(this.currentCommand);
-    }
-  }
-
-  /**
-   * 포즈 인식 결과 처리
-   * @param {string} detectedPose - 인식된 포즈 이름
+   * 포즈 인식 결과 처리 (Player Movement)
+   * @param {string} detectedPose - "Left", "Center", "Right"
    */
   onPoseDetected(detectedPose) {
     if (!this.isGameActive) return;
 
-    // 현재 명령과 일치하는지 확인
-    if (this.currentCommand && detectedPose === this.currentCommand) {
-      this.addScore(10); // 점수 추가
-      this.issueNewCommand(); // 새로운 명령 발급
+    // Update player position based on pose
+    if (["Left", "Center", "Right"].includes(detectedPose)) {
+      this.playerPos = detectedPose;
     }
   }
 
   /**
-   * 점수 추가
-   * @param {number} points - 추가할 점수
+   * 게임 루프 업데이트 (Update Physics)
+   * @param {number} timestamp - RequestAnimationFrame timestamp
    */
+  update(timestamp) {
+    if (!this.isGameActive) return;
+
+    // 1. Spawn Items
+    if (timestamp - this.lastItemTime > this.itemInterval) {
+      this.spawnItem();
+      this.lastItemTime = timestamp;
+    }
+
+    // 2. Move Items
+    this.items.forEach(item => {
+      item.y += this.itemSpeed;
+    });
+
+    // 3. Collision Detection & Cleanup
+    this.checkCollisions();
+  }
+
+  spawnItem() {
+    const lanes = ["Left", "Center", "Right"];
+    const lane = lanes[Math.floor(Math.random() * lanes.length)];
+
+    // 20% Bomb, 30% Banana, 50% Apple
+    const rand = Math.random();
+    let type = "Apple";
+    if (rand < 0.2) type = "Bomb";
+    else if (rand < 0.5) type = "Banana";
+
+    this.items.push({
+      lane: lane,
+      type: type,
+      y: -50, // Start above screen
+      w: 40,
+      h: 40
+    });
+  }
+
+  checkCollisions() {
+    const playerY = this.canvasHeight - 60; // Player is at bottom
+
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+
+      // Screen bottom?
+      if (item.y > this.canvasHeight) {
+        this.items.splice(i, 1);
+        continue;
+      }
+
+      // Collision with Player?
+      // Simple logic: if item is low enough AND in same lane
+      if (item.y + item.h >= playerY && item.y < playerY + 50 && item.lane === this.playerPos) {
+        this.handleCatch(item);
+        this.items.splice(i, 1);
+      }
+    }
+  }
+
+  handleCatch(item) {
+    if (item.type === "Bomb") {
+      // Game Over immediately or penalty
+      // Let's do Game Over for now as per rules
+      this.stop();
+      alert("폭탄을 받았습니다! 💥\n게임 종료!");
+    } else if (item.type === "Apple") {
+      this.addScore(100);
+    } else if (item.type === "Banana") {
+      this.addScore(300); // Higher score
+    }
+  }
+
   addScore(points) {
     this.score += points;
 
-    // 레벨업 로직 (예: 100점마다)
-    if (this.score >= this.level * 100) {
+    // Level Up every 1000 points
+    if (Math.floor(this.score / 1000) + 1 > this.level) {
       this.level++;
+      this.itemSpeed += 0.5; // Speed up
+      this.itemInterval = Math.max(500, this.itemInterval - 100); // Faster spawn
     }
 
     if (this.onScoreChange) {
@@ -121,42 +192,58 @@ class GameEngine {
   }
 
   /**
-   * 명령 변경 콜백 등록
-   * @param {Function} callback - (command) => void
+   * 게임 요소 그리기
+   * @param {CanvasRenderingContext2D} ctx 
    */
-  setCommandChangeCallback(callback) {
-    this.onCommandChange = callback;
+  draw(ctx) {
+    if (!this.isGameActive) return;
+
+    // Draw Lanes specific vars
+    const laneWidth = this.canvasWidth / 3;
+
+    // Draw Items
+    this.items.forEach(item => {
+      let x = this.getLaneX(item.lane, laneWidth);
+
+      // Draw based on type
+      ctx.font = "30px Arial";
+      let icon = "🍎";
+      if (item.type === "Banana") icon = "🍌";
+      if (item.type === "Bomb") icon = "💣";
+
+      ctx.fillText(icon, x - 15, item.y + 30);
+    });
+
+    // Draw Player (Bucket)
+    let playerX = this.getLaneX(this.playerPos, laneWidth);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)"; // Semi-transparent basket
+    ctx.fillRect(playerX - 30, this.canvasHeight - 60, 60, 40);
+
+    ctx.font = "30px Arial";
+    ctx.fillText("🧺", playerX - 15, this.canvasHeight - 30);
+
+    // Draw UI Overlay (Score)
+    ctx.fillStyle = "white";
+    ctx.font = "20px Arial";
+    ctx.fillText(`Score: ${this.score}`, 10, 30);
+    ctx.fillText(`Time: ${this.timeLimit}`, 10, 60);
+    ctx.fillText(`Level: ${this.level}`, 10, 90);
   }
 
-  /**
-   * 점수 변경 콜백 등록
-   * @param {Function} callback - (score, level) => void
-   */
+  getLaneX(lane, laneWidth) {
+    if (lane === "Left") return laneWidth * 0.5;
+    if (lane === "Center") return laneWidth * 1.5;
+    if (lane === "Right") return laneWidth * 2.5;
+    return laneWidth * 1.5;
+  }
+
   setScoreChangeCallback(callback) {
     this.onScoreChange = callback;
   }
 
-  /**
-   * 게임 종료 콜백 등록
-   * @param {Function} callback - (finalScore, finalLevel) => void
-   */
   setGameEndCallback(callback) {
     this.onGameEnd = callback;
   }
-
-  /**
-   * 현재 게임 상태 반환
-   */
-  getGameState() {
-    return {
-      isActive: this.isGameActive,
-      score: this.score,
-      level: this.level,
-      timeRemaining: this.timeLimit,
-      currentCommand: this.currentCommand
-    };
-  }
 }
 
-// 전역으로 내보내기
 window.GameEngine = GameEngine;
