@@ -1,154 +1,240 @@
 /**
  * main.js
- * 포즈 인식과 게임 로직을 초기화하고 서로 연결하는 진입점
+ * 게임 초기화 및 연결
+ * 수정: 카메라 늦게 켜기, 조작 방식 선택 후 시작
  */
 
-// 전역 변수
-let poseEngine;
-let gameEngine;
-let stabilizer;
+let poseEngine, gameEngine, stabilizer;
 let ctx;
-let labelContainer;
+let currentControlMode = null; // "WEBCAM" or "KEYBOARD" (null initially)
+let isPoseInitialized = false;
 
-/**
- * 애플리케이션 초기화
- */
 async function init() {
-  const startBtn = document.getElementById("startBtn");
-  const stopBtn = document.getElementById("stopBtn");
-
-  startBtn.disabled = true;
-
-  try {
-    // 0. GameEngine 초기화 먼저 (설정 로드 등을 위해)
-    gameEngine = new GameEngine();
-
-    // 1. PoseEngine 초기화
-    poseEngine = new PoseEngine("./my_model/");
-    // 캔버스 크기를 500x500으로 키움 (게임 화면 확보)
-    const { maxPredictions, webcam } = await poseEngine.init({
-      size: 500,
-      flip: true
-    });
-
-    // 2. Stabilizer 초기화
-    stabilizer = new PredictionStabilizer({
-      threshold: 0.7,
-      smoothingFrames: 3
-    });
-
-    // 3. 캔버스 설정
-    const canvas = document.getElementById("canvas");
-    canvas.width = 500;
-    canvas.height = 500;
-    ctx = canvas.getContext("2d");
-
-    // 4. Label Container 설정
-    labelContainer = document.getElementById("label-container");
-    labelContainer.innerHTML = "";
-    for (let i = 0; i < maxPredictions; i++) {
-      labelContainer.appendChild(document.createElement("div"));
-    }
-
-    // 5. PoseEngine 콜백 설정
-    poseEngine.setPredictionCallback(handlePrediction);
-    poseEngine.setDrawCallback(drawPose);
-
-    // 6. PoseEngine 시작
-    poseEngine.start();
-
-    // 7. 게임 자동 시작 (바로 테스트 가능하게)
-    startGameMode();
-
-    stopBtn.disabled = false;
-  } catch (error) {
-    console.error("초기화 중 오류 발생:", error);
-    alert("초기화에 실패했습니다. 콘솔을 확인하세요.");
-    startBtn.disabled = false;
-  }
-}
-
-/**
- * 애플리케이션 중지
- */
-function stop() {
-  const startBtn = document.getElementById("startBtn");
-  const stopBtn = document.getElementById("stopBtn");
-
-  if (poseEngine) {
-    poseEngine.stop();
-  }
-
-  if (gameEngine) // gameEngine.isGameActive check is inside stop usually, but safe to call
-  {
-    gameEngine.stop();
-  }
-
-  if (stabilizer) {
-    stabilizer.reset();
-  }
-
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
-}
-
-/**
- * 예측 결과 처리 콜백
- */
-function handlePrediction(predictions, pose) {
-  // 1. Stabilizer로 예측 안정화
-  const stabilized = stabilizer.stabilize(predictions);
-
-  // 2. Label Container 업데이트
-  for (let i = 0; i < predictions.length; i++) {
-    const classPrediction =
-      predictions[i].className + ": " + predictions[i].probability.toFixed(2);
-    labelContainer.childNodes[i].innerHTML = classPrediction;
-  }
-
-  // 3. 최고 확률 예측 표시
-  const maxPredictionDiv = document.getElementById("max-prediction");
-  maxPredictionDiv.innerHTML = stabilized.className || "감지 중...";
-
-  // 4. GameEngine에 포즈 전달
-  if (gameEngine && gameEngine.isGameActive && stabilized.className) {
-    gameEngine.onPoseDetected(stabilized.className);
-  }
-}
-
-/**
- * 포즈 및 게임 그리기 콜백 (매 프레임 호출됨)
- */
-function drawPose(pose) {
-  // 1. 웹캠 영상 그리기
-  if (poseEngine.webcam && poseEngine.webcam.canvas) {
-    ctx.drawImage(poseEngine.webcam.canvas, 0, 0);
-
-    // 키포인트 그리기 (선택)
-    if (pose) {
-      const minPartConfidence = 0.5;
-      tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
-      tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
-    }
-  }
-
-  // 2. 게임 엔진 업데이트 및 그리기 (오버레이)
-  if (gameEngine && gameEngine.isGameActive) {
-    // timestamp를 전달하여 프레임 기반 애니메이션 처리
-    gameEngine.update(performance.now());
-    gameEngine.draw(ctx);
-  }
-}
-
-function startGameMode() {
-  if (!gameEngine) return;
-
-  // 게임 시작 설정
-  gameEngine.start({
-    timeLimit: 60,
-    width: 500,
-    height: 500
+  // 1. GameEngine & Stabilizer 초기화 (미리 준비)
+  gameEngine = new GameEngine();
+  stabilizer = new PredictionStabilizer({
+    threshold: 0.7,
+    smoothingFrames: 3
   });
 
-  console.log("게임 모드 시작됨");
+  // 2. Canvas Setup
+  const canvas = document.getElementById("canvas");
+  canvas.width = 600;
+  canvas.height = 600;
+  ctx = canvas.getContext("2d");
+
+  // 3. UI Setup (Overlay & Buttons)
+  setupUI();
+
+  // 4. Start Render Loop (Always running to show game over screen, etc)
+  requestAnimationFrame(drawLoop);
 }
+
+// 렌더링 루프
+function drawLoop() {
+  if (gameEngine) {
+    // 배경 지우기
+    ctx.fillStyle = "#333";
+    ctx.fillRect(0, 0, 600, 600); // clear canvas
+
+    // 게임 상태가 Active거나 GameOver일 때만 그리기
+    if (gameEngine.isGameActive || gameEngine.isGameOver) {
+      gameEngine.update(performance.now());
+      gameEngine.draw(ctx);
+    }
+  }
+  requestAnimationFrame(drawLoop);
+}
+
+// UI 이벤트 설정
+function setupUI() {
+  const overlay = document.getElementById("game-overlay");
+  const btnWebcam = document.getElementById("btn-webcam");
+  const btnKeyboard = document.getElementById("btn-keyboard");
+  const startPrompt = document.querySelector(".start-prompt");
+
+  // 초기 상태: 선택 안됨
+  btnWebcam.classList.remove("selected");
+  btnKeyboard.classList.remove("selected");
+
+  // A. 카메라 버튼 클릭
+  btnWebcam.addEventListener("click", async (e) => {
+    e.stopPropagation();
+
+    // 이미 키보드 모드였다면?
+    currentControlMode = "WEBCAM";
+    updateButtonStyles();
+
+    // 카메라 초기화 (아직 안 했다면)
+    if (!isPoseInitialized) {
+      btnWebcam.innerText = "⏳ 로딩 중...";
+      btnWebcam.disabled = true;
+      try {
+        await initPoseEngine();
+        btnWebcam.innerText = "📷 카메라 (Pose)";
+        btnWebcam.disabled = false;
+        alert("카메라가 켜졌습니다! 몸을 움직여보세요.");
+      } catch (err) {
+        console.error(err);
+        btnWebcam.innerText = "❌ 오류 발생";
+        alert("카메라를 켤 수 없습니다.");
+        currentControlMode = null;
+        updateButtonStyles();
+      }
+    }
+  });
+
+  // B. 키보드 버튼 클릭
+  btnKeyboard.addEventListener("click", (e) => {
+    e.stopPropagation();
+    currentControlMode = "KEYBOARD";
+    updateButtonStyles();
+    // 키보드는 별도 초기화 필요 없음
+  });
+
+  // C. 시작 클릭 (Overlay의 start-prompt 클릭 시)
+  startPrompt.addEventListener("click", (e) => {
+    e.stopPropagation(); // Prevent bubbling if needed
+
+    if (!currentControlMode) {
+      alert("조작 방식을 선택해주세요!");
+      return;
+    }
+
+    if (!gameEngine.isGameActive) {
+      startGame();
+    }
+  });
+
+  // Also allow clicking anywhere on overlay background if not on buttons
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      if (!currentControlMode) return;
+      startGame();
+    }
+  });
+
+  function updateButtonStyles() {
+    if (currentControlMode === "WEBCAM") {
+      btnWebcam.classList.add("selected");
+      btnKeyboard.classList.remove("selected");
+    } else if (currentControlMode === "KEYBOARD") {
+      btnKeyboard.classList.add("selected");
+      btnWebcam.classList.remove("selected");
+    } else {
+      btnWebcam.classList.remove("selected");
+      btnKeyboard.classList.remove("selected");
+    }
+  }
+
+  // D. 인게임 조작 이벤트 (마우스/터치/키보드)
+  setupGameControls();
+}
+
+// PoseEngine 초기화 (카메라 모드 선택 시 호출)
+async function initPoseEngine() {
+  if (isPoseInitialized) return;
+
+  poseEngine = new PoseEngine("./my_model/");
+  const { maxPredictions, webcam } = await poseEngine.init({
+    size: 200,
+    flip: true
+  });
+
+  // 웹캠 캔버스 붙이기 (숨겨진 컨테이너에)
+  const webcamContainer = document.getElementById("webcam-container");
+  if (webcam && webcamContainer) {
+    webcamContainer.innerHTML = ""; // 기존 내용 클리어
+    webcamContainer.appendChild(webcam.canvas);
+    // 라벨 등 다시 추가 필요하면 여기서.. 하지만 index.html에 틀이 있어서 appendChild만 해도 됨
+  }
+
+  // 예측 콜백 연결
+  poseEngine.setPredictionCallback(handlePrediction);
+  poseEngine.start();
+
+  isPoseInitialized = true;
+}
+
+// 포즈 예측 처리
+function handlePrediction(prediction) {
+  // 웹캠 모드일 때만 동작
+  if (currentControlMode !== "WEBCAM") return;
+  if (!gameEngine || !gameEngine.isGameActive) return;
+
+  if (prediction) {
+    const stablePose = stabilizer.update(prediction);
+    const poseName = stablePose.className;
+    gameEngine.onPoseDetected(poseName);
+
+    // 디버그용 텍스트 (숨겨져 있을 수 있음)
+    const labelContainer = document.getElementById("max-prediction");
+    if (labelContainer) {
+      labelContainer.innerText = poseName;
+    }
+  }
+}
+
+// 인게임 컨트롤 설정
+function setupGameControls() {
+  // Mouse: Boost / Restart
+  const handleInputStart = () => {
+    if (gameEngine) {
+      if (gameEngine.isGameOver) {
+        // 게임 오버 상태에서 클릭하면 재시작
+        startGame();
+      } else if (gameEngine.isGameActive) {
+        gameEngine.setSpeedBoost(true);
+      }
+    }
+  };
+  const handleInputEnd = () => {
+    if (gameEngine) gameEngine.setSpeedBoost(false);
+  };
+
+  window.addEventListener("mousedown", handleInputStart);
+  window.addEventListener("mouseup", handleInputEnd);
+  window.addEventListener("touchstart", handleInputStart);
+  window.addEventListener("touchend", handleInputEnd);
+
+  // Keyboard
+  window.addEventListener("keydown", (e) => {
+    if (!gameEngine || !gameEngine.isGameActive) return;
+
+    // Spacebar: Laser
+    if (e.code === "Space") {
+      gameEngine.shootLaser();
+    }
+
+    // Arrow Keys: Movement (If Keyboard Mode)
+    if (currentControlMode === "KEYBOARD") {
+      if (e.code === "ArrowLeft") gameEngine.movePlayer("Left");
+      if (e.code === "ArrowRight") gameEngine.movePlayer("Right");
+
+      // 키보드 모드에서도 아래키로 부스트 가능하게 할까? (마우스 클릭과 동일 기능)
+      if (e.code === "ArrowDown") gameEngine.setSpeedBoost(true);
+    }
+  });
+
+  window.addEventListener("keyup", (e) => {
+    if (currentControlMode === "KEYBOARD") {
+      if (e.code === "ArrowDown") gameEngine.setSpeedBoost(false);
+    }
+  });
+}
+
+// 게임 시작 실행
+function startGame() {
+  const overlay = document.getElementById("game-overlay");
+  overlay.classList.add("hidden");
+
+  // GameEngine 시작
+  gameEngine.start({
+    timeLimit: 60,
+    width: 600,
+    height: 600
+  });
+}
+
+// 앱 시작
+init();

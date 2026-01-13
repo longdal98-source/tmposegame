@@ -16,16 +16,35 @@
     </header>
 
     <div class="game-area">
-      <div class="canvas-wrapper">
-        <canvas id="canvas"></canvas>
+      <!-- Webcam Feed (Hidden) -->
+      <div id="webcam-container" class="canvas-wrapper" style="display: none;">
+        <div class="canvas-label">📷 AI Eye</div>
+        <!-- Webcam canvas will be appended here by JS -->
         <div id="max-prediction" class="overlay-text">대기 중...</div>
       </div>
-      <div id="label-container"></div>
-    </div>
 
-    <div class="controls">
-      <button id="startBtn" onclick="init()">게임 시작 (카메라 켜기)</button>
-      <button id="stopBtn" onclick="stop()" disabled>종료</button>
+      <!-- Game Screen (Right, Large) -->
+      <div class="canvas-wrapper">
+        <div class="canvas-label">🎮 Game Screen</div>
+        <canvas id="canvas"></canvas>
+
+        <!-- Game Title / Start Screen Overlay -->
+        <div id="game-overlay" class="game-overlay">
+          <h1>Falling Fruit Catcher</h1>
+          <p>🍎 하늘에서 떨어지는 과일을 받아라! 🍎</p>
+
+          <div class="control-select-box">
+            <h3>🕹️ 조작 방식 선택</h3>
+            <button id="btn-webcam" class="control-btn selected">📷 카메라 (Pose)</button>
+            <button id="btn-keyboard" class="control-btn">⌨️ 키보드 (Arrow)</button>
+          </div>
+
+          <div class="start-prompt">
+            <h2>시작</h2>
+            <p>(Click to Start)</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
