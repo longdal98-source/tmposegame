@@ -1,48 +1,21 @@
-/**
- * main.js
- * 게임 초기화 및 연결 (Simplified / Fixed)
- */
+// main.js
+// 게임 초기화 및 연결 (Simplified / Fixed)
 
-let poseEngine, gameEngine, stabilizer;
+let gameEngine;
 let ctx;
-let currentControlMode = "WEBCAM";
-let isPoseInitialized = false;
+let currentControlMode = "KEYBOARD"; // Default & Only
 
 // DOMContentLoaded -> Init
 document.addEventListener("DOMContentLoaded", init);
 
-// Audio System
-const audioSystem = {
-  bgm: new Audio("sounds/bgm.mp3"),
-  isMuted: false,
-
-  init() {
-    this.bgm.loop = true;
-    this.bgm.volume = 0.5;
-  },
-
-  playBgm() {
-    if (this.isMuted) return;
-    this.bgm.play().catch(e => console.log("Audio play failed (user interaction needed):", e));
-  },
-
-  stopBgm() {
-    this.bgm.pause();
-    this.bgm.currentTime = 0;
-  },
-
-  toggleMute() {
-    this.isMuted = !this.isMuted;
-    this.bgm.muted = this.isMuted;
-    return this.isMuted;
-  }
-};
+// Audio System Removed
 
 async function init() {
   gameEngine = new GameEngine();
-  stabilizer = new PredictionStabilizer({ threshold: 0.7, smoothingFrames: 3 });
+  // Audio Removed
+  // stabilizer = ... Removed
 
-  audioSystem.init(); // Init Audio
+  // Audio Init Removed
 
   // Flip Screen Effect
   gameEngine.setReverseCallback((active) => {
@@ -74,45 +47,23 @@ function drawLoop() {
 }
 
 function setupUI() {
-  const btnWebcam = document.getElementById("btn-webcam");
-  const btnKeyboard = document.getElementById("btn-keyboard");
+  // const btnWebcam = ... Removed
+  // const btnKeyboard = ... Removed
   const btnStart = document.getElementById("btn-game-start");
   const loadingText = document.getElementById("loading-text");
-  const overlay = document.getElementById("game-overlay");
+  // const overlay = ...
 
-  // 1. Control Selection
-  btnWebcam.addEventListener("click", () => {
-    currentControlMode = "WEBCAM";
-    btnWebcam.classList.add("selected");
-    btnKeyboard.classList.remove("selected");
-  });
-
-  btnKeyboard.addEventListener("click", () => {
-    currentControlMode = "KEYBOARD";
-    btnKeyboard.classList.add("selected");
-    btnWebcam.classList.remove("selected");
-  });
+  // 1. Control Selection (Removed)
 
   // 2. Start Button Click
-  btnStart.addEventListener("click", async () => {
+  btnStart.addEventListener("click", () => {
+    // Unlock Audio removed
+
     // Disable button to prevent double clicks
     btnStart.disabled = true;
 
-    if (currentControlMode === "WEBCAM") {
-      loadingText.style.display = "block";
-      try {
-        await initPoseEngine(); // Wait for camera
-        startGame();
-      } catch (e) {
-        console.error(e);
-        alert("카메라 실행 실패! 권한을 허용해주세요.");
-        loadingText.style.display = "none";
-        btnStart.disabled = false;
-      }
-    } else {
-      // Keyboard Mode
-      startGame();
-    }
+    // Direct Start
+    startGame();
   });
 
   // 3. Game Inputs
@@ -121,19 +72,14 @@ function setupUI() {
   // 4. Pause Menu & Speed Buttons
   setupPauseMenu();
   setupSpeedButton();
-  setupMuteButton();
+  // Mute Button Removed
 }
 
+/*
 function setupMuteButton() {
-  const btnMute = document.getElementById("btn-mute-toggle");
-  if (btnMute) {
-    btnMute.addEventListener("click", () => {
-      const isMuted = audioSystem.toggleMute();
-      btnMute.innerText = isMuted ? "🔇 Muted" : "🔊 Sound ON";
-      btnMute.classList.toggle("muted", isMuted);
-    });
-  }
-}
+ ...
+} 
+*/
 
 
 function setupPauseMenu() {
@@ -186,12 +132,40 @@ function setupPauseMenu() {
     }
     if (found) savePointContainer.style.display = "block";
     else savePointContainer.style.display = "none";
+
+    // Active Effects List
+    updateActiveEffectsList();
+  }
+
+  function updateActiveEffectsList() {
+    let container = document.getElementById("active-effects-container");
+    if (!container) {
+      // Create if missing
+      const parent = document.querySelector(".start-btn-container");
+      container = document.createElement("div");
+      container.id = "active-effects-container";
+      container.style.marginTop = "15px";
+      container.style.textAlign = "left";
+      container.style.fontSize = "14px";
+      container.style.color = "#ddd";
+      parent.insertBefore(container, document.getElementById("btn-quit"));
+    }
+
+    if (gameEngine) {
+      const effects = gameEngine.getActiveEffectDescriptions();
+      if (effects.length > 0) {
+        container.innerHTML = "<h4>현재 적용 중:</h4><ul>" + effects.map(e => `<li>${e}</li>`).join("") + "</ul>";
+        container.style.display = "block";
+      } else {
+        container.style.display = "none";
+      }
+    }
   }
 
   btnQuit.addEventListener("click", () => {
     if (gameEngine) {
       gameEngine.stop(); // Triggers Game Over
-      audioSystem.stopBgm(); // Stop Music
+      // audioSystem.stopBgm(); // Removed
       pauseMenu.classList.add("hidden");
       // Show Score / Game Over screen is automatic via gameEngine drawing
     }
@@ -210,48 +184,7 @@ function setupSpeedButton() {
   }
 }
 
-async function initPoseEngine() {
-  if (isPoseInitialized) return;
-
-  const loadingText = document.getElementById("loading-text");
-
-  try {
-    loadingText.innerText = "로컬 AI 모델(my_model) 로딩 중...";
-    poseEngine = new PoseEngine("./my_model/");
-
-    loadingText.innerText = "카메라 권한 요청 중...";
-    const { webcam } = await poseEngine.init({ size: 200, flip: true });
-
-    loadingText.innerText = "화면 구성 중...";
-    const container = document.getElementById("webcam-container");
-    if (container && webcam) {
-      container.innerHTML = "";
-      container.appendChild(webcam.canvas);
-    }
-
-    poseEngine.setPredictionCallback(handlePrediction);
-    poseEngine.start();
-    isPoseInitialized = true;
-
-  } catch (err) {
-    console.error(err);
-    alert("오류 발생: " + err.message + "\n(카메라 권한을 확인하거나, 로컬 서버에서 실행 중인지 확인하세요.)");
-    throw err;
-  }
-}
-
-function handlePrediction(prediction) {
-  if (currentControlMode !== "WEBCAM" || !gameEngine.isGameActive) return;
-
-  if (prediction) {
-    const stablePose = stabilizer.update(prediction);
-    gameEngine.onPoseDetected(stablePose.className);
-
-    // Debug text if needed
-    const label = document.getElementById("max-prediction");
-    if (label) label.innerText = stablePose.className;
-  }
-}
+/* Pose Engine Removed */
 
 function startGame() {
   const overlay = document.getElementById("game-overlay");
@@ -269,7 +202,7 @@ function startGame() {
     height: 600
   });
 
-  audioSystem.playBgm(); // Start Music
+  // audioSystem.playBgm(); // BGM Removed
 }
 
 function setupGameControls() {
@@ -301,7 +234,13 @@ function setupGameControls() {
   window.addEventListener("keydown", (e) => {
     if (!gameEngine || !gameEngine.isGameActive) return;
 
-    if (e.code === "Space") gameEngine.shootLaser();
+    if (e.code === "Space") {
+      if (!e.repeat) gameEngine.shootLaser(); // Space: Fire
+    }
+    if (e.code === "KeyL") {
+      if (!e.repeat) gameEngine.triggerSuperBeam(); // L: Instant Super Beam
+    }
+
     if (e.code === "KeyZ") gameEngine.triggerAnnihilate();
     if (e.code === "KeyF") {
       gameEngine.togglePause();
@@ -318,6 +257,12 @@ function setupGameControls() {
   });
 
   window.addEventListener("keyup", (e) => {
+    if (!gameEngine) return;
+
+    if (e.code === "KeyL") {
+      // gameEngine.stopCharging(); // Removed
+    }
+
     if (currentControlMode === "KEYBOARD") {
       if (e.code === "ArrowDown") gameEngine.setSpeedBoost(false);
     }

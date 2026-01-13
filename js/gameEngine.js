@@ -25,22 +25,30 @@ class GameEngine {
     // Physics
     this.lastItemTime = 0;
     this.lastPowerUpSpawnTime = 0;
-    this.lastAnnihilateTime = -15000; // Ready at start
+    this.lastAnnihilateTime = -15000;
     this.itemSpeed = 0;
     this.itemInterval = 0;
     this.isBoosted = false;
     this.isGameOver = false;
 
     // Legacy PowerUp (Laser)
-    this.hasLaser = false;
+    this.hasLaser = false; // Default: Disable Laser
 
-    // PowerUps States (BigBasket Removed)
+    // Super Beam State
+    this.superBeam = {
+      active: false,
+      endTime: 0,
+      x: 0,
+      width: 100 // Wide Beam
+    };
+
+    // PowerUps States
     this.activeEffects = {
       Magnet: 0,
       Shield: false,
       Freeze: 0
     };
-    this.isPaused = false; // New Pause State
+    this.isPaused = false;
   }
 
   start(config = {}) {
@@ -57,27 +65,224 @@ class GameEngine {
     this.playerPos = "Center";
 
     // Standard Settings
-    this.itemSpeed = 4.0; // Slightly faster start
-    this.itemInterval = 800; // Much faster spawns (was 1200)
+    this.itemSpeed = 4.0;
+    this.itemInterval = 800;
     this.lastPowerUpSpawnTime = -30000;
-    this.lastAnnihilateTime = -15000; // Ready
+    this.lastAnnihilateTime = -15000;
     this.isBoosted = false;
-    // this.nextLevelScore = 500; // Removed dynamic threshold logic
+
+    this.hasLaser = false; // Default: Disable Laser
+    this.superBeam = { active: false, endTime: 0, x: 0, width: 20 }; // Narrower Beam (20px)
+    this.superBeamAmmo = 1; // Default Ammo
+    this.chargeProgress = 0;
+    this.isSuperReady = false;
+    this.isCharging = false;
+
+    this.activeEffects = { Magnet: 0, Shield: false, Freeze: 0, Reverse: 0 };
+    this.hasLaser = true; // Passive: Always ON
+    this.lastLaserShotTime = 0; // Cooldown tracker
+    this.startTimer();
+  }
+
+  // ...
+
+  update(timestamp) {
+    if (!this.isGameActive || this.isPaused) return;
+
+    // 1. Calculate Speeds
+    let speedMult = 1;
+    if (this.isBoosted) speedMult *= 2;
+    if (this.activeEffects.Freeze > 0) speedMult *= 0.5;
+
+    const currentSpeed = this.itemSpeed * speedMult;
+    const currentInterval = (this.itemInterval / speedMult);
+
+    // 2. Spawn Items
+    if (timestamp - this.lastItemTime > currentInterval) {
+      this.spawnItem();
+      this.lastItemTime = timestamp;
+    }
+
+    // 3. Move Items & Magnet
+    const laneWidth = this.canvasWidth / 3;
+    const playerX = this.getLaneX(this.playerPos, laneWidth);
+
+    // Charge Progress Update
+    if (this.isCharging && !this.isSuperReady) {
+      this.chargeProgress += 16.6; // ~1000ms / 60fps
+      if (this.chargeProgress >= 5000) {
+        this.chargeProgress = 5000;
+        this.isSuperReady = true;
+      }
+    }
+
+    // Super Beam Logic: Update X to follow player
+    if (this.superBeam.active) {
+      this.superBeam.x = playerX;
+      if (timestamp > this.superBeam.endTime) {
+        this.superBeam.active = false;
+      }
+    }
+
+    this.items.forEach(item => {
+      // Y Movement
+      item.y += currentSpeed;
+      // ... (Magnet logic)
+      if (this.activeEffects.Magnet > 0) {
+        // Exclude Hazards from Magnet
+        if (["Bomb", "Spike", "Dynamite"].includes(item.type)) {
+          // Do nothing
+        } else {
+          const itemLaneX = this.getLaneX(item.lane, laneWidth);
+          if (item.y > 100 && item.y < this.canvasHeight - 100) {
+            // ... (existing logic)
+            if (this.areLanesAdjacent(this.playerPos, item.lane)) {
+              item.lane = this.playerPos;
+            }
+          }
+        }
+      }
+    });
+
+    // 4. Move Lasers
+    for (let i = this.lasers.length - 1; i >= 0; i--) {
+      this.lasers[i].y -= 15;
+      if (this.lasers[i].y < -50) this.lasers.splice(i, 1);
+    }
+
+    // 5. Collision
+    this.checkCollisions();
+  }
+
+  // ...
+
+  checkCollisions() {
+    const playerY = this.canvasHeight - 60;
+    const laneWidth = this.canvasWidth / 3;
+
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+      if (item.y > this.canvasHeight) {
+        this.items.splice(i, 1);
+        continue;
+      }
+
+      // 1. Player Collision
+      let isHit = false;
+      if (item.lane === this.playerPos && item.y + item.h >= playerY && item.y < playerY + 50) {
+        isHit = true;
+      }
+
+      if (isHit) {
+        this.handleCatch(item);
+        this.items.splice(i, 1);
+        continue;
+      }
+
+      // 2. Laser Collision (Normal)
+      for (let j = this.lasers.length - 1; j >= 0; j--) {
+        const laser = this.lasers[j];
+        if (this.checkRectCollision(item, laser)) {
+          // Filter: Don't destroy Fruits or good items
+          if (["Apple", "Banana", "Grape", "Orange", "Magnet", "Shield", "Freeze", "Battery", "Warp", "Dynamite"].includes(item.type)) {
+            // Pass through (Dynamite is now immune to normal laser)
+          } else {
+            // Destroy Hazards
+            this.lasers.splice(j, 1);
+            this.items.splice(i, 1);
+            if (item.type === "Bomb") this.addScore(50);
+            else this.addScore(10);
+          }
+          break;
+        }
+      }
+
+      // 3. Super Beam Collision
+      if (this.superBeam.active) {
+        // Beam Rect: x = superBeam.x - width/2, y = 0, w = width, h = canvasHeight
+        const itemX = this.getLaneX(item.lane, laneWidth);
+
+        // If itemX is within beam range (simple approximate)
+        if (Math.abs(itemX - this.superBeam.x) < (this.superBeam.width / 2 + 20)) {
+          this.items.splice(i, 1);
+          if (item.type === "Bomb" || item.type === "Dynamite") {
+            this.addScore(100);
+          } else {
+            this.addScore(20);
+          }
+          continue;
+        }
+      }
+    }
+  }
+
+  // ...
+
+  getActiveEffectDescriptions() {
+    const list = [];
+    if (this.isBoosted) list.push("⚡ 스피드 부스트");
+    if (this.activeEffects.Magnet > 0) list.push("🧲 자석 (아이템 끌어당김)");
+    if (this.activeEffects.Shield) list.push("🛡️ 쉴드 (1회 방어)");
+    if (this.activeEffects.Freeze > 0) list.push("❄️ 프리즈 (시간 느리게)");
+    return list;
+  }
+
+  // ...
 
 
-    this.hasLaser = false;
-    this.activeEffects = {
-      Magnet: 0,
-      Shield: false,
-      Freeze: 0
-    };
 
-    if (this.timeLimit > 0) this.startTimer();
+  // Draw Function Update for Beam
+  draw(ctx) {
+    if (this.isGameOver) {
+      this.drawGameOver(ctx);
+      return;
+    }
+    if (!this.isGameActive) return;
+
+    const laneWidth = this.canvasWidth / 3;
+
+    // Draw Lanes
+    this.drawLanes(ctx, laneWidth);
+
+    // Draw Lasers
+    ctx.fillStyle = "#00FF00";
+    this.lasers.forEach(l => ctx.fillRect(l.x - 2, l.y, 4, 30));
+
+    // Draw Super Beam
+    if (this.superBeam.active) {
+      const beamsX = this.superBeam.x;
+      const beamW = this.superBeam.width;
+      const beamBottom = this.canvasHeight - 60; // Player Y position (Basket top)
+
+      ctx.save();
+      // Solid Blue Beam (Like original laser style)
+      ctx.fillStyle = "#00BFFF"; // Deep Sky Blue
+      ctx.fillRect(beamsX - beamW / 2, 0, beamW, beamBottom);
+
+      // White Core
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(beamsX - 2, 0, 4, beamBottom);
+
+      // Glow Effect
+      ctx.shadowColor = "#0000FF";
+      ctx.shadowBlur = 20;
+      ctx.restore();
+    }
+
+    // Draw Items
+    this.drawItems(ctx, laneWidth);
+
+    // Draw Player
+    this.drawPlayer(ctx, laneWidth);
+
+    // Draw Interface
+    this.drawUI(ctx);
   }
 
   stop() {
     this.isGameActive = false;
     this.isGameOver = true;
+    // if (this.audioSystem) this.audioSystem.playSound("gameover");
     this.clearTimer();
     if (this.onGameEnd) this.onGameEnd(this.score);
   }
@@ -147,60 +352,7 @@ class GameEngine {
     }
   }
 
-  update(timestamp) {
-    if (!this.isGameActive || this.isPaused) return;
 
-    // 1. Calculate Speeds
-    let speedMult = 1;
-    if (this.isBoosted) speedMult *= 2; // 2x Boost (Reduced from 3x)
-    if (this.activeEffects.Freeze > 0) speedMult *= 0.5; // Freeze slows down
-
-    const currentSpeed = this.itemSpeed * speedMult;
-    const currentInterval = (this.itemInterval / speedMult); // Faster speed = shorter interval
-
-    // 2. Spawn Items
-    if (timestamp - this.lastItemTime > currentInterval) {
-      this.spawnItem();
-      this.lastItemTime = timestamp;
-    }
-
-    // 3. Move Items
-    const laneWidth = this.canvasWidth / 3;
-    const playerX = this.getLaneX(this.playerPos, laneWidth);
-
-    this.items.forEach(item => {
-      // Y Movement
-      item.y += currentSpeed;
-
-      // Magnet Logic: Pull items towards player center
-      if (this.activeEffects.Magnet > 0 && item.type !== "Bomb") {
-        const itemLaneX = this.getLaneX(item.lane, laneWidth);
-        // Only pull if close enough (y > 100)
-        if (item.y > 100 && item.y < this.canvasHeight - 100) {
-          const diff = playerX - itemLaneX;
-          // Visual pull (note: this separates item from lane logic slightly, purely visual/collision x logic needed)
-          // For simplicity, we just change the item's internal 'x_offset' if we had one, 
-          // but here our collision relies on 'lane'. 
-          // Let's stick to lane logic: Magnet widens pickup range effectively.
-          // *Simpler implementation*: Magnet actively sucks items into the player's lane if they are adjacent.
-
-          if (this.areLanesAdjacent(this.playerPos, item.lane)) {
-            // Move item to player's lane
-            item.lane = this.playerPos;
-          }
-        }
-      }
-    });
-
-    // 4. Move Lasers
-    for (let i = this.lasers.length - 1; i >= 0; i--) {
-      this.lasers[i].y -= 15;
-      if (this.lasers[i].y < -50) this.lasers.splice(i, 1);
-    }
-
-    // 5. Collision
-    this.checkCollisions();
-  }
 
   areLanesAdjacent(lane1, lane2) {
     if (lane1 === lane2) return false;
@@ -209,32 +361,39 @@ class GameEngine {
     return false; // Left-Right are not adjacent
   }
 
-  triggerAnnihilate() {
-    if (!this.isGameActive) return;
-    const now = performance.now();
-    const cooldown = 15000;
-    if (now - this.lastAnnihilateTime < cooldown) return; // Cooling down
 
-    // Execute Annihilation
-    this.items = []; // Clear all items
-    this.addScore(500); // Bonus for skill
-    this.lastAnnihilateTime = now;
+  // ...
+  // Laser Logic
+  triggerSuperBeam() {
+    if (!this.isGameActive || !this.hasLaser) return;
+    if (this.superBeam.active) return; // Already active
 
-    // Visual effect or sound could trigger here
+    // Check Ammo
+    if (this.superBeamAmmo > 0) {
+      this.superBeamAmmo--;
+      this.superBeam.active = true;
+      this.superBeam.endTime = performance.now() + 2000;
+      this.superBeam.x = this.getLaneX(this.playerPos, this.canvasWidth / 3);
+    }
   }
 
   shootLaser() {
     if (!this.isGameActive || !this.hasLaser) return;
+    // Normal Laser (Spacebar) - with Cooldown
+    const now = performance.now();
+    if (now - this.lastLaserShotTime < 3000) return; // 3000ms (3s) Cooldown
 
+    this.lastLaserShotTime = now;
     const laneWidth = this.canvasWidth / 3;
     const playerX = this.getLaneX(this.playerPos, laneWidth);
-    const playerY = this.canvasHeight - 80; // Start slightly above player
+    const playerY = this.canvasHeight - 80;
 
     this.lasers.push({
       x: playerX,
       y: playerY,
       w: 4,
-      h: 30
+      h: 30,
+      color: "#00FF00"
     });
   }
 
@@ -283,11 +442,19 @@ class GameEngine {
     // High chance: 15% per spawn
     if (rand > 0.85 && timeSinceLastPowerUp > powerUpCooldown) {
       const pRand = Math.random();
-      if (pRand < 0.4) type = "Magnet";
-      else if (pRand < 0.8) type = "Shield";
-      else type = "Freeze";
 
-      if (!this.hasLaser && Math.random() > 0.8) type = "LaserGun";
+      // Laser Spawn Logic: 30% Chance if player doesn't have it
+      if (!this.hasLaser && Math.random() < 0.3) {
+        type = "LaserGun";
+      } else if (this.hasLaser && Math.random() < 0.5) {
+        // Battery Logic: 50% Chance if player HAS laser (Increased from 30%)
+        type = "Battery";
+      } else {
+        // Normal PowerUps
+        if (pRand < 0.33) type = "Magnet";
+        else if (pRand < 0.66) type = "Shield";
+        else type = "Freeze";
+      }
 
       this.lastPowerUpSpawnTime = now;
     } else {
@@ -312,47 +479,7 @@ class GameEngine {
     });
   }
 
-  checkCollisions() {
-    const playerY = this.canvasHeight - 60;
 
-    // Effective Player Width
-    // Base is small (40px).
-    const playerHitWidth = 40;
-
-    for (let i = this.items.length - 1; i >= 0; i--) {
-      const item = this.items[i];
-      if (item.y > this.canvasHeight) {
-        this.items.splice(i, 1);
-        continue;
-      }
-
-      // 1. Player Collision
-      // Check Lane Alignment
-      let isHit = false;
-
-      // Standard Lane Logic
-      if (item.lane === this.playerPos && item.y + item.h >= playerY && item.y < playerY + 50) {
-        isHit = true;
-      }
-
-      if (isHit) {
-        this.handleCatch(item);
-        this.items.splice(i, 1);
-        continue;
-      }
-
-      // 2. Laser Collision
-      for (let j = this.lasers.length - 1; j >= 0; j--) {
-        const laser = this.lasers[j];
-        if (this.checkRectCollision(item, laser)) {
-          this.lasers.splice(j, 1);
-          this.items.splice(i, 1);
-          if (item.type === "Bomb") this.addScore(50);
-          break;
-        }
-      }
-    }
-  }
 
   checkRectCollision(item, laser) {
     const laneWidth = this.canvasWidth / 3;
@@ -363,14 +490,19 @@ class GameEngine {
   }
 
   handleCatch(item) {
+    // if (this.audioSystem) this.audioSystem.playSound("catch");
+
     if (item.type === "Dynamite") {
       // Unstoppable Game Over
+      // if (this.audioSystem) this.audioSystem.playSound("bomb");
       this.stop();
     } else if (item.type === "Bomb" || item.type === "Spike") {
       if (this.activeEffects.Shield) {
         this.activeEffects.Shield = false; // Consume Shield
+        // if (this.audioSystem) this.audioSystem.playSound("bomb");
         // Sound or visual effect here
       } else {
+        // if (this.audioSystem) this.audioSystem.playSound("bomb");
         this.stop();
       }
     } else if (item.type === "Reverse") {
@@ -387,6 +519,9 @@ class GameEngine {
       if (item.type === "Grape") pts = 450;
       if (item.type === "Orange") pts = 400;
       this.addScore(pts);
+    } else if (item.type === "Battery") {
+      this.superBeamAmmo++;
+      this.addScore(50);
     } else {
       // PowerUps
       this.activatePowerUp(item.type);
@@ -455,31 +590,7 @@ class GameEngine {
     }
   }
 
-  draw(ctx) {
-    if (this.isGameOver) {
-      this.drawGameOver(ctx);
-      return;
-    }
-    if (!this.isGameActive) return;
 
-    const laneWidth = this.canvasWidth / 3;
-
-    // Draw Lanes
-    this.drawLanes(ctx, laneWidth);
-
-    // Draw Lasers
-    ctx.fillStyle = "#00FF00";
-    this.lasers.forEach(l => ctx.fillRect(l.x - 2, l.y, 4, 30));
-
-    // Draw Items
-    this.drawItems(ctx, laneWidth);
-
-    // Draw Player
-    this.drawPlayer(ctx, laneWidth);
-
-    // Draw Interface
-    this.drawUI(ctx);
-  }
 
   drawLanes(ctx, laneWidth) {
     ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
@@ -512,6 +623,7 @@ class GameEngine {
       if (item.type === "Reverse") icon = "🙃"; // Debuff
       if (item.type === "Warp") icon = "⚫"; // Hidden
       if (item.type === "LaserGun") icon = "🔫";
+      if (item.type === "Battery") icon = "🔋";
 
       ctx.fillText(icon, x - 15, item.y + 30);
     });
@@ -570,29 +682,39 @@ class GameEngine {
     ctx.strokeStyle = "#8B4513";
     ctx.stroke();
 
+    // Ammo Indicator (Above Head)
+    if (this.hasLaser) {
+      ctx.fillStyle = "white";
+      ctx.font = "bold 14px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(`BEAM: ${this.superBeamAmmo}`, playerX, playerY - 30);
+    }
+
     ctx.restore();
   }
 
   drawUI(ctx) {
-    // Top Left: Score & Level
+    // Top Left: Level (Score moved to bottom right)
     ctx.textAlign = "left";
     ctx.fillStyle = "white";
     ctx.font = "20px Arial";
-    ctx.fillText(`Score: ${this.score}`, 10, 30);
-    ctx.fillText(`Level: ${this.level}`, 10, 60);
+    // ctx.fillText(`Score: ${this.score}`, 10, 30); // Moved
+    ctx.fillText(`Level: ${this.level}`, 10, 30); // Moved up since Score is gone
 
     // Active Effects (Left Side)
-    let yPos = 100;
+    let yPos = 70; // Adjusted starting Y
     const drawStatus = (text, color) => {
       ctx.fillStyle = color;
       ctx.fillText(text, 10, yPos);
       yPos += 30;
     };
 
+    // ... (rest of effects drawing) ...
+
     if (this.isBoosted) drawStatus("⚡ 2배속!", "#FF4500");
     if (this.activeEffects.Magnet > 0) drawStatus(`🧲 자석 (${this.activeEffects.Magnet}s)`, "#FFA500");
     if (this.activeEffects.Freeze > 0) drawStatus(`❄️ 시간동결 (${this.activeEffects.Freeze}s)`, "#00FFFF");
-    if (this.activeEffects.BigBasket > 0) drawStatus(`🍄 거대화 (${this.activeEffects.BigBasket}s)`, "#FF69B4");
+    // if (this.activeEffects.BigBasket > 0) drawStatus(`🍄 거대화 (${this.activeEffects.BigBasket}s)`, "#FF69B4");
     if (this.activeEffects.Shield) drawStatus(`🛡️ 쉴드 ON`, "#4169E1");
     if (this.hasLaser) drawStatus(`🔫 레이저 장착`, "#00FF00");
 
@@ -608,17 +730,11 @@ class GameEngine {
       drawStatus(`⏳ 전멸 쿨타임 (${waitT}s)`, "#888");
     }
 
-    // Bottom Right: Time Limit Removed
-    /*
-    if (this.timeLimit > 0) {
-      ctx.textAlign = "right";
-      ctx.font = "bold 30px Arial";
-      if (this.timeLimit <= 10) ctx.fillStyle = "red";
-      else ctx.fillStyle = "white";
-
-      ctx.fillText(`Time: ${this.timeLimit}`, this.canvasWidth - 20, this.canvasHeight - 20);
-    }
-    */
+    // Bottom Right: Score
+    ctx.textAlign = "right";
+    ctx.font = "bold 30px Arial";
+    ctx.fillStyle = "white";
+    ctx.fillText(`Score: ${this.score}`, this.canvasWidth - 20, this.canvasHeight - 20);
 
     ctx.textAlign = "left";
   }
@@ -651,7 +767,7 @@ class GameEngine {
 
   setGameEndCallback(callback) { this.onGameEnd = callback; }
   setScoreChangeCallback(callback) { this.onScoreChange = callback; }
-  setCommandChangeCallback(callback) { }
+  // setAudioSystem(audioSys) { this.audioSystem = audioSys; }
 }
 
 window.GameEngine = GameEngine;

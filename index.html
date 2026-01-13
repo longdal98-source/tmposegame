@@ -11,68 +11,63 @@
 <body>
   <div class="container">
     <header>
-      <h1>🍎 Falling Fruit Catcher 🍌</h1>
-      <p>몸을 움직여 바구니를 이동하고 과일을 받으세요! (폭탄💣 조심)</p>
-    </header>
+      <header>
+        <h1>🍎 Falling Fruit Catcher 🍌</h1>
+        <p><strong>L키: 슈퍼 빔</strong> (즉시 발사), <strong>스페이스바: 일반 레이저</strong></p>
+      </header>
 
-    <div class="game-area">
-      <!-- Webcam Feed (Hidden but Active) -->
-      <div id="webcam-container" class="canvas-wrapper"
-        style="position: absolute; left: -9999px; top: 0; opacity: 1; z-index: -1;">
-        <div class="canvas-label">📷 AI Eye</div>
-        <!-- Webcam canvas will be appended here by JS -->
-      </div>
+      <div class="game-area">
+        <!-- Game Screen (Right, Large) -->
+        <div class="canvas-wrapper">
+          <!-- <div class="canvas-label">🎮 Game Screen</div> -->
+          <canvas id="canvas"></canvas>
 
-      <!-- Game Screen (Right, Large) -->
-      <div class="canvas-wrapper">
-        <div class="canvas-label">🎮 Game Screen</div>
-        <canvas id="canvas"></canvas>
+          <!-- Speed Toggle Button (Top Right of Canvas) -->
+          <button id="btn-speed-toggle" class="speed-btn">⚡ 2x Speed</button>
+          <!-- Mute Button Removed -->
 
-        <!-- Speed Toggle Button (Top Right of Canvas) -->
-        <button id="btn-speed-toggle" class="speed-btn">⚡ 2x Speed</button>
-        <button id="btn-mute-toggle" class="speed-btn" style="right: 130px;">🔊 Sound ON</button>
+          <!-- Pause Menu Overlay -->
+          <div id="pause-menu" class="game-overlay hidden">
+            <h2>일시 정지</h2>
 
-        <!-- Pause Menu Overlay -->
-        <div id="pause-menu" class="game-overlay hidden">
-          <h2>일시 정지</h2>
-          <div class="start-btn-container">
-            <button id="btn-continue" class="start-btn">계속하기</button>
-            <div id="save-point-container" style="margin-top: 20px; display: none;">
-              <h3>★ 세이브 포인트 ★</h3>
-              <div id="save-list" style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                <!-- Buttons injected by JS -->
-              </div>
+            <div style="margin: 15px 0; color: #eee; font-size: 14px; line-height: 1.6;">
+              <p>⚡ <strong>조작법</strong> ⚡</p>
+              <p>이동: 방향키 (← →)</p>
+              <p>일반 레이저: <strong>스페이스바</strong></p>
+              <p>슈퍼 빔: <strong>L키</strong> (탄환 1발 소모)</p>
+              <p>배터리 🔋: 슈퍼 빔 탄환 충전</p>
             </div>
-            <button id="btn-quit" class="control-btn" style="margin-top: 20px; background: #e74c3c;">그만하기</button>
+
+            <div class="start-btn-container">
+              <button id="btn-continue" class="start-btn">계속하기</button>
+              <div id="save-point-container" style="margin-top: 20px; display: none;">
+                <h3>★ 세이브 포인트 ★</h3>
+                <div id="save-list" style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                  <!-- Buttons injected by JS -->
+                </div>
+              </div>
+              <button id="btn-quit" class="control-btn" style="margin-top: 20px; background: #e74c3c;">그만하기</button>
+            </div>
           </div>
-        </div>
 
-        <!-- Game Title / Start Screen Overlay -->
-        <div id="game-overlay" class="game-overlay">
-          <h1>Falling Fruit Catcher</h1>
+          <!-- Game Title / Start Screen Overlay -->
+          <div id="game-overlay" class="game-overlay">
+            <h1>Falling Fruit Catcher</h1>
 
-          <div class="start-btn-container" style="margin-bottom: 50px;">
-            <button id="btn-game-start" class="start-btn">게임 시작</button>
-            <p id="loading-text" style="display:none; color: yellow; margin-top: 10px;">카메라 로딩 중...</p>
-          </div>
+            <div class="start-btn-container" style="margin-bottom: 50px;">
+              <button id="btn-game-start" class="start-btn">게임 시작</button>
+              <p id="loading-text" style="display:none; color: yellow; margin-top: 10px;">로딩 중...</p>
+            </div>
 
-          <div class="control-select-box">
-            <h3>조작 방식 선택</h3>
-            <button id="btn-webcam" class="control-btn selected">📷 카메라 (Pose)</button>
-            <button id="btn-keyboard" class="control-btn">⌨️ 키보드 (Arrow)</button>
+            <!-- Control Selection Removed -->
           </div>
         </div>
       </div>
-    </div>
   </div>
 
-  <!-- TensorFlow.js & Teachable Machine Libraries -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+  <!-- TensorFlow.js Removed -->
 
   <!-- Custom Scripts -->
-  <script src="js/stabilizer.js"></script>
-  <script src="js/poseEngine.js"></script>
   <script src="js/gameEngine.js"></script>
   <script src="js/main.js"></script>
 </body>
