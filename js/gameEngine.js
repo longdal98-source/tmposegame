@@ -95,7 +95,7 @@ class GameEngine {
   startTimer() {
     this.clearTimer();
     this.gameTimer = setInterval(() => {
-      this.timeLimit--;
+      // this.timeLimit--; // Time limit removed
 
       // Update PowerUp Timers
       if (this.activeEffects.Magnet > 0) this.activeEffects.Magnet--;
@@ -108,7 +108,7 @@ class GameEngine {
         }
       }
 
-      if (this.timeLimit <= 0) this.stop();
+      // if (this.timeLimit <= 0) this.stop(); // Infinite Game
     }, 1000);
   }
 
@@ -430,12 +430,12 @@ class GameEngine {
       nextLevelScore: this.nextLevelScore
     };
     // Save to key "save_level_X"
-    localStorage.setItem(`ffc_save_${this.level}`, JSON.stringify(saveData));
+    sessionStorage.setItem(`ffc_save_${this.level}`, JSON.stringify(saveData));
     console.log(`Saved at Level ${this.level}`);
   }
 
   loadCheckpoint(level) {
-    const dataStr = localStorage.getItem(`ffc_save_${level}`);
+    const dataStr = sessionStorage.getItem(`ffc_save_${level}`);
     if (dataStr) {
       const data = JSON.parse(dataStr);
       this.level = data.level;
@@ -608,7 +608,8 @@ class GameEngine {
       drawStatus(`⏳ 전멸 쿨타임 (${waitT}s)`, "#888");
     }
 
-    // Bottom Right: Time Limit
+    // Bottom Right: Time Limit Removed
+    /*
     if (this.timeLimit > 0) {
       ctx.textAlign = "right";
       ctx.font = "bold 30px Arial";
@@ -617,6 +618,7 @@ class GameEngine {
 
       ctx.fillText(`Time: ${this.timeLimit}`, this.canvasWidth - 20, this.canvasHeight - 20);
     }
+    */
 
     ctx.textAlign = "left";
   }

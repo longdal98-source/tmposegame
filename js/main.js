@@ -11,9 +11,38 @@ let isPoseInitialized = false;
 // DOMContentLoaded -> Init
 document.addEventListener("DOMContentLoaded", init);
 
+// Audio System
+const audioSystem = {
+  bgm: new Audio("sounds/bgm.mp3"),
+  isMuted: false,
+
+  init() {
+    this.bgm.loop = true;
+    this.bgm.volume = 0.5;
+  },
+
+  playBgm() {
+    if (this.isMuted) return;
+    this.bgm.play().catch(e => console.log("Audio play failed (user interaction needed):", e));
+  },
+
+  stopBgm() {
+    this.bgm.pause();
+    this.bgm.currentTime = 0;
+  },
+
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    this.bgm.muted = this.isMuted;
+    return this.isMuted;
+  }
+};
+
 async function init() {
   gameEngine = new GameEngine();
   stabilizer = new PredictionStabilizer({ threshold: 0.7, smoothingFrames: 3 });
+
+  audioSystem.init(); // Init Audio
 
   // Flip Screen Effect
   gameEngine.setReverseCallback((active) => {
@@ -92,6 +121,18 @@ function setupUI() {
   // 4. Pause Menu & Speed Buttons
   setupPauseMenu();
   setupSpeedButton();
+  setupMuteButton();
+}
+
+function setupMuteButton() {
+  const btnMute = document.getElementById("btn-mute-toggle");
+  if (btnMute) {
+    btnMute.addEventListener("click", () => {
+      const isMuted = audioSystem.toggleMute();
+      btnMute.innerText = isMuted ? "🔇 Muted" : "🔊 Sound ON";
+      btnMute.classList.toggle("muted", isMuted);
+    });
+  }
 }
 
 
@@ -126,7 +167,7 @@ function setupPauseMenu() {
     saveList.innerHTML = "";
     let found = false;
     for (let i = 10; i <= 200; i += 10) {
-      const dataStr = localStorage.getItem(`ffc_save_${i}`);
+      const dataStr = sessionStorage.getItem(`ffc_save_${i}`);
       if (dataStr) {
         found = true;
         const btn = document.createElement("button");
@@ -150,6 +191,7 @@ function setupPauseMenu() {
   btnQuit.addEventListener("click", () => {
     if (gameEngine) {
       gameEngine.stop(); // Triggers Game Over
+      audioSystem.stopBgm(); // Stop Music
       pauseMenu.classList.add("hidden");
       // Show Score / Game Over screen is automatic via gameEngine drawing
     }
@@ -226,6 +268,8 @@ function startGame() {
     width: 600,
     height: 600
   });
+
+  audioSystem.playBgm(); // Start Music
 }
 
 function setupGameControls() {
