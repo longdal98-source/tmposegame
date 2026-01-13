@@ -88,6 +88,84 @@ function setupUI() {
 
   // 3. Game Inputs
   setupGameControls();
+
+  // 4. Pause Menu & Speed Buttons
+  setupPauseMenu();
+  setupSpeedButton();
+}
+
+
+function setupPauseMenu() {
+  const btnContinue = document.getElementById("btn-continue");
+  const btnQuit = document.getElementById("btn-quit");
+  const pauseMenu = document.getElementById("pause-menu");
+
+  btnContinue.addEventListener("click", () => {
+    if (gameEngine) {
+      gameEngine.togglePause();
+      pauseMenu.classList.add("hidden");
+    }
+  });
+
+  // Save Point UI Update
+  const savePointContainer = document.getElementById("save-point-container");
+  const saveList = document.getElementById("save-list");
+
+  // Observer to update list when paused
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.target.classList.contains("hidden") === false) {
+        // Menu Opened
+        updateSaveList();
+      }
+    });
+  });
+  observer.observe(pauseMenu, { attributes: true, attributeFilter: ["class"] });
+
+  function updateSaveList() {
+    saveList.innerHTML = "";
+    let found = false;
+    for (let i = 10; i <= 200; i += 10) {
+      const dataStr = localStorage.getItem(`ffc_save_${i}`);
+      if (dataStr) {
+        found = true;
+        const btn = document.createElement("button");
+        btn.className = "control-btn";
+        btn.innerText = `Lv.${i} 로드`;
+        btn.style.fontSize = "14px";
+        btn.onclick = () => {
+          if (confirm(`레벨 ${i}에서 다시 시작하시겠습니까?`)) {
+            gameEngine.loadCheckpoint(i);
+            gameEngine.togglePause(); // Unpause
+            pauseMenu.classList.add("hidden");
+          }
+        };
+        saveList.appendChild(btn);
+      }
+    }
+    if (found) savePointContainer.style.display = "block";
+    else savePointContainer.style.display = "none";
+  }
+
+  btnQuit.addEventListener("click", () => {
+    if (gameEngine) {
+      gameEngine.stop(); // Triggers Game Over
+      pauseMenu.classList.add("hidden");
+      // Show Score / Game Over screen is automatic via gameEngine drawing
+    }
+  });
+}
+
+function setupSpeedButton() {
+  const btnSpeed = document.getElementById("btn-speed-toggle");
+  if (btnSpeed) {
+    btnSpeed.addEventListener("click", () => {
+      if (gameEngine && gameEngine.isGameActive) {
+        gameEngine.toggleSpeedBoost();
+        btnSpeed.classList.toggle("active");
+      }
+    });
+  }
 }
 
 async function initPoseEngine() {
@@ -181,6 +259,12 @@ function setupGameControls() {
 
     if (e.code === "Space") gameEngine.shootLaser();
     if (e.code === "KeyZ") gameEngine.triggerAnnihilate();
+    if (e.code === "KeyF") {
+      gameEngine.togglePause();
+      const pauseMenu = document.getElementById("pause-menu");
+      if (gameEngine.isPaused) pauseMenu.classList.remove("hidden");
+      else pauseMenu.classList.add("hidden");
+    }
 
     if (currentControlMode === "KEYBOARD") {
       if (e.code === "ArrowLeft") gameEngine.movePlayer("Left");

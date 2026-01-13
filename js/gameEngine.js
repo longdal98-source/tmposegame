@@ -40,6 +40,7 @@ class GameEngine {
       Shield: false,
       Freeze: 0
     };
+    this.isPaused = false; // New Pause State
   }
 
   start(config = {}) {
@@ -50,16 +51,19 @@ class GameEngine {
     this.timeLimit = config.timeLimit || 60;
     this.canvasWidth = config.width || 600;
     this.canvasHeight = config.height || 600;
+    this.isPaused = false;
     this.items = [];
     this.lasers = [];
     this.playerPos = "Center";
 
     // Standard Settings
-    this.itemSpeed = 3.5;
-    this.itemInterval = 1200;
+    this.itemSpeed = 4.0; // Slightly faster start
+    this.itemInterval = 800; // Much faster spawns (was 1200)
     this.lastPowerUpSpawnTime = -30000;
     this.lastAnnihilateTime = -15000; // Ready
     this.isBoosted = false;
+    // this.nextLevelScore = 500; // Removed dynamic threshold logic
+
 
     this.hasLaser = false;
     this.activeEffects = {
@@ -69,6 +73,21 @@ class GameEngine {
     };
 
     if (this.timeLimit > 0) this.startTimer();
+  }
+
+  stop() {
+    this.isGameActive = false;
+    this.isGameOver = true;
+    this.clearTimer();
+    if (this.onGameEnd) this.onGameEnd(this.score);
+  }
+
+  togglePause() {
+    this.isPaused = !this.isPaused;
+  }
+
+  toggleSpeedBoost() {
+    this.isBoosted = !this.isBoosted;
   }
 
   // ...
@@ -94,7 +113,7 @@ class GameEngine {
   }
 
   activateReverse() {
-    this.activeEffects.Reverse = 5; // 5 Seconds
+    this.activeEffects.Reverse = 3; // 3 Seconds (Reduced from 5)
     if (this.onReverseEffect) this.onReverseEffect(true);
   }
 
@@ -129,7 +148,7 @@ class GameEngine {
   }
 
   update(timestamp) {
-    if (!this.isGameActive) return;
+    if (!this.isGameActive || this.isPaused) return;
 
     // 1. Calculate Speeds
     let speedMult = 1;
@@ -204,6 +223,21 @@ class GameEngine {
     // Visual effect or sound could trigger here
   }
 
+  shootLaser() {
+    if (!this.isGameActive || !this.hasLaser) return;
+
+    const laneWidth = this.canvasWidth / 3;
+    const playerX = this.getLaneX(this.playerPos, laneWidth);
+    const playerY = this.canvasHeight - 80; // Start slightly above player
+
+    this.lasers.push({
+      x: playerX,
+      y: playerY,
+      w: 4,
+      h: 30
+    });
+  }
+
   spawnItem() {
     const lanes = ["Left", "Center", "Right"];
     // Shuffle
@@ -229,8 +263,8 @@ class GameEngine {
     let type = "Apple";
     const rand = Math.random();
 
-    // Warp (Black Hole) - 0.01% chance (Super Hidden)
-    if (Math.random() > 0.9999) {
+    // Warp (Black Hole) - 0.001% chance
+    if (Math.random() > 0.99999) {
       this.items.push({
         lane: selectedLane,
         type: "Warp",
@@ -241,27 +275,31 @@ class GameEngine {
       return;
     }
 
-    // PowerUps (Very Rare)
+    // PowerUps (High Frequency)
     const now = performance.now();
     const timeSinceLastPowerUp = now - this.lastPowerUpSpawnTime;
-    const powerUpCooldown = 10000;
+    const powerUpCooldown = 3000; // Very short cooldown
 
-    if (rand > 0.99 && timeSinceLastPowerUp > powerUpCooldown) {
+    // High chance: 15% per spawn
+    if (rand > 0.85 && timeSinceLastPowerUp > powerUpCooldown) {
       const pRand = Math.random();
       if (pRand < 0.4) type = "Magnet";
       else if (pRand < 0.8) type = "Shield";
       else type = "Freeze";
 
-      if (!this.hasLaser && Math.random() > 0.9) type = "LaserGun";
+      if (!this.hasLaser && Math.random() > 0.8) type = "LaserGun";
 
       this.lastPowerUpSpawnTime = now;
     } else {
-      // Fruits & Bombs & Debuffs
-      if (rand < 0.30) type = "Bomb";
-      else if (rand < 0.35) type = "Reverse"; // New Debuff (5%)
-      else if (rand < 0.55) type = "Banana";
-      else if (rand < 0.70) type = "Grape";
-      else if (rand < 0.85) type = "Orange";
+      // Fruits & Hazards
+      // 30% Hazards (Bomb, Spike, Dynamite), 5% Reverse, 65% Fruits
+      if (rand < 0.10) type = "Bomb";
+      else if (rand < 0.20) type = "Spike";
+      else if (rand < 0.30) type = "Dynamite"; // Shield Breaker 🧨
+      else if (rand < 0.35) type = "Reverse";
+      else if (rand < 0.50) type = "Banana";
+      else if (rand < 0.65) type = "Grape";
+      else if (rand < 0.80) type = "Orange";
       else type = "Apple";
     }
 
@@ -325,7 +363,10 @@ class GameEngine {
   }
 
   handleCatch(item) {
-    if (item.type === "Bomb") {
+    if (item.type === "Dynamite") {
+      // Unstoppable Game Over
+      this.stop();
+    } else if (item.type === "Bomb" || item.type === "Spike") {
       if (this.activeEffects.Shield) {
         this.activeEffects.Shield = false; // Consume Shield
         // Sound or visual effect here
@@ -335,12 +376,16 @@ class GameEngine {
     } else if (item.type === "Reverse") {
       this.activateReverse();
     } else if (item.type === "Warp") {
-      this.addScore(5000);
+      this.addScore(10000); // Massive points
+      this.level += 10;
+      this.itemSpeed += 2.0;
+
     } else if (["Apple", "Banana", "Grape", "Orange"].includes(item.type)) {
-      let pts = 100;
-      if (item.type === "Banana") pts = 200;
-      if (item.type === "Grape") pts = 150;
-      if (item.type === "Orange") pts = 120;
+      // Increased Score Values (3x)
+      let pts = 300;
+      if (item.type === "Banana") pts = 600;
+      if (item.type === "Grape") pts = 450;
+      if (item.type === "Orange") pts = 400;
       this.addScore(pts);
     } else {
       // PowerUps
@@ -358,13 +403,56 @@ class GameEngine {
 
   addScore(points) {
     this.score += points;
-    // Fast leveling (Every 500 points)
-    if (Math.floor(this.score / 500) + 1 > this.level) {
-      this.level++;
-      this.itemSpeed += 0.5;
-      this.itemInterval = Math.max(800, this.itemInterval - 100);
+
+    // Fixed Leveling: Every 700 points
+    const newLevel = Math.floor(this.score / 700) + 1;
+
+    if (newLevel > this.level) {
+      this.level = newLevel;
+      // Difficulty Scaling
+      this.itemSpeed += 0.3; // Gentle speed increase
+      this.itemInterval = Math.max(500, 800 - (this.level * 20)); // Cap at 500ms
+
+      // Save Point every 10 levels
+      if (this.level % 10 === 0) {
+        this.saveCheckpoint();
+      }
     }
     if (this.onScoreChange) this.onScoreChange(this.score, this.level);
+  }
+
+  saveCheckpoint() {
+    const saveData = {
+      level: this.level,
+      score: this.score,
+      itemSpeed: this.itemSpeed,
+      itemInterval: this.itemInterval,
+      nextLevelScore: this.nextLevelScore
+    };
+    // Save to key "save_level_X"
+    localStorage.setItem(`ffc_save_${this.level}`, JSON.stringify(saveData));
+    console.log(`Saved at Level ${this.level}`);
+  }
+
+  loadCheckpoint(level) {
+    const dataStr = localStorage.getItem(`ffc_save_${level}`);
+    if (dataStr) {
+      const data = JSON.parse(dataStr);
+      this.level = data.level;
+      this.score = data.score;
+      this.itemSpeed = data.itemSpeed;
+      this.itemInterval = data.itemInterval;
+      this.nextLevelScore = data.nextLevelScore;
+
+      // Reset game state slightly
+      this.items = [];
+      this.isGameActive = true;
+      this.isGameOver = false;
+      this.isPaused = false;
+      if (this.timeLimit <= 0) this.timeLimit = 60; // Reset time if needed or keep? Let's reset time for fairness on load
+
+      if (this.onScoreChange) this.onScoreChange(this.score, this.level);
+    }
   }
 
   draw(ctx) {
@@ -415,6 +503,8 @@ class GameEngine {
       if (item.type === "Grape") icon = "🍇";
       if (item.type === "Orange") icon = "🍊";
       if (item.type === "Bomb") icon = "💣";
+      if (item.type === "Spike") icon = "🌵";
+      if (item.type === "Dynamite") icon = "🧨";
 
       if (item.type === "Magnet") icon = "🧲";
       if (item.type === "Shield") icon = "🛡️";

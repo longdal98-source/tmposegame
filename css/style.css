@@ -119,6 +119,7 @@ canvas {
   margin-bottom: 30px;
   background: linear-gradient(to right, #ff8a00, #e52e71);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: pulse 2s infinite;
 }
@@ -221,4 +222,32 @@ canvas {
   padding: 5px 10px;
   border-radius: 5px;
   font-size: 14px;
+}
+
+/* Speed Toggle Button */
+.speed-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 20;
+  /* Above canvas labels */
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: 2px solid white;
+  border-radius: 20px;
+  padding: 5px 15px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.speed-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.speed-btn.active {
+  background: #FF4500;
+  border-color: #FFD700;
+  box-shadow: 0 0 10px #FF4500;
+  animation: pulse 1s infinite;
 }
