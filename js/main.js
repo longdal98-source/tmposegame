@@ -86,18 +86,31 @@ function setupUI() {
 async function initPoseEngine() {
   if (isPoseInitialized) return;
 
-  poseEngine = new PoseEngine("./my_model/");
-  const { webcam } = await poseEngine.init({ size: 200, flip: true });
+  const loadingText = document.getElementById("loading-text");
 
-  const container = document.getElementById("webcam-container");
-  if (container && webcam) {
-    container.innerHTML = "";
-    container.appendChild(webcam.canvas);
+  try {
+    loadingText.innerText = "모델 로딩 중...";
+    poseEngine = new PoseEngine("./my_model/");
+
+    loadingText.innerText = "카메라 권한 요청 중...";
+    const { webcam } = await poseEngine.init({ size: 200, flip: true });
+
+    loadingText.innerText = "화면 구성 중...";
+    const container = document.getElementById("webcam-container");
+    if (container && webcam) {
+      container.innerHTML = "";
+      container.appendChild(webcam.canvas);
+    }
+
+    poseEngine.setPredictionCallback(handlePrediction);
+    poseEngine.start();
+    isPoseInitialized = true;
+
+  } catch (err) {
+    console.error(err);
+    alert("오류 발생: " + err.message + "\n(카메라 권한을 확인하거나, 로컬 서버에서 실행 중인지 확인하세요.)");
+    throw err;
   }
-
-  poseEngine.setPredictionCallback(handlePrediction);
-  poseEngine.start();
-  isPoseInitialized = true;
 }
 
 function handlePrediction(prediction) {
@@ -134,9 +147,14 @@ function setupGameControls() {
   const handleInputStart = () => {
     if (!gameEngine) return;
     if (gameEngine.isGameOver) {
-      // Show overlay again to allow restarting properly
+      // Game Over -> Show Title Screen (Overlay)
       const overlay = document.getElementById("game-overlay");
       overlay.classList.remove("hidden");
+
+      // Reset button state just in case
+      const btnStart = document.getElementById("btn-game-start");
+      btnStart.disabled = false;
+
     } else if (gameEngine.isGameActive) {
       gameEngine.setSpeedBoost(true);
     }

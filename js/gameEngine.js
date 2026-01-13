@@ -24,6 +24,7 @@ class GameEngine {
 
     // Physics
     this.lastItemTime = 0;
+    this.lastPowerUpSpawnTime = 0; // Cooldown tracker
     this.itemSpeed = 0;
     this.itemInterval = 0;
     this.isBoosted = false;
@@ -57,6 +58,7 @@ class GameEngine {
     // Faster Settings
     this.itemSpeed = 3.5; // Start fast
     this.itemInterval = 1200; // Spawn often
+    this.lastPowerUpSpawnTime = -30000; // Allow immediate spawn if lucky
     this.isBoosted = false;
 
     // Reset PowerUps
