@@ -89,7 +89,7 @@ async function initPoseEngine() {
   const loadingText = document.getElementById("loading-text");
 
   try {
-    loadingText.innerText = "모델 로딩 중...";
+    loadingText.innerText = "로컬 AI 모델(my_model) 로딩 중...";
     poseEngine = new PoseEngine("./my_model/");
 
     loadingText.innerText = "카메라 권한 요청 중...";
