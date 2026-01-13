@@ -15,6 +15,13 @@ async function init() {
   gameEngine = new GameEngine();
   stabilizer = new PredictionStabilizer({ threshold: 0.7, smoothingFrames: 3 });
 
+  // Flip Screen Effect
+  gameEngine.setReverseCallback((active) => {
+    const body = document.body;
+    if (active) body.classList.add("reverse-screen");
+    else body.classList.remove("reverse-screen");
+  });
+
   const canvas = document.getElementById("canvas");
   canvas.width = 600;
   canvas.height = 600;
@@ -171,7 +178,10 @@ function setupGameControls() {
 
   window.addEventListener("keydown", (e) => {
     if (!gameEngine || !gameEngine.isGameActive) return;
+
     if (e.code === "Space") gameEngine.shootLaser();
+    if (e.code === "KeyZ") gameEngine.triggerAnnihilate();
+
     if (currentControlMode === "KEYBOARD") {
       if (e.code === "ArrowLeft") gameEngine.movePlayer("Left");
       if (e.code === "ArrowRight") gameEngine.movePlayer("Right");

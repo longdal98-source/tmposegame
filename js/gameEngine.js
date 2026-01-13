@@ -24,21 +24,21 @@ class GameEngine {
 
     // Physics
     this.lastItemTime = 0;
-    this.lastPowerUpSpawnTime = 0; // Cooldown tracker
+    this.lastPowerUpSpawnTime = 0;
+    this.lastAnnihilateTime = -15000; // Ready at start
     this.itemSpeed = 0;
     this.itemInterval = 0;
     this.isBoosted = false;
     this.isGameOver = false;
 
     // Legacy PowerUp (Laser)
-    this.hasLaser = false; // Renamed from hasPowerUp for clarity
+    this.hasLaser = false;
 
-    // New PowerUps States
+    // PowerUps States (BigBasket Removed)
     this.activeEffects = {
-      Magnet: 0,    // Timer > 0 implies active
-      Shield: false, // Boolean
-      Freeze: 0,
-      BigBasket: 0
+      Magnet: 0,
+      Shield: false,
+      Freeze: 0
     };
   }
 
@@ -50,74 +50,55 @@ class GameEngine {
     this.timeLimit = config.timeLimit || 60;
     this.canvasWidth = config.width || 600;
     this.canvasHeight = config.height || 600;
-
     this.items = [];
     this.lasers = [];
     this.playerPos = "Center";
 
-    // Faster Settings
-    this.itemSpeed = 3.5; // Start fast
-    this.itemInterval = 1200; // Spawn often
-    this.lastPowerUpSpawnTime = -30000; // Allow immediate spawn if lucky
+    // Standard Settings
+    this.itemSpeed = 3.5;
+    this.itemInterval = 1200;
+    this.lastPowerUpSpawnTime = -30000;
+    this.lastAnnihilateTime = -15000; // Ready
     this.isBoosted = false;
 
-    // Reset PowerUps
     this.hasLaser = false;
     this.activeEffects = {
       Magnet: 0,
       Shield: false,
-      Freeze: 0,
-      BigBasket: 0
+      Freeze: 0
     };
 
-    if (this.timeLimit > 0) {
-      this.startTimer();
-    }
+    if (this.timeLimit > 0) this.startTimer();
   }
 
-  stop() {
-    this.isGameActive = false;
-    this.isGameOver = true;
-    this.clearTimer();
-
-    if (this.onGameEnd) {
-      this.onGameEnd(this.score, this.level);
-    }
-  }
-
-  setSpeedBoost(enabled) {
-    this.isBoosted = enabled;
-  }
-
-  shootLaser() {
-    if (!this.isGameActive || !this.hasLaser) return;
-
-    const laneWidth = this.canvasWidth / 3;
-    const playerX = this.getLaneX(this.playerPos, laneWidth);
-
-    this.lasers.push({
-      x: playerX,
-      y: this.canvasHeight - 60,
-      w: 10,
-      h: 30
-    });
-  }
+  // ...
 
   startTimer() {
     this.clearTimer();
     this.gameTimer = setInterval(() => {
       this.timeLimit--;
 
-      // Update PowerUp Timers (1s decrement)
+      // Update PowerUp Timers
       if (this.activeEffects.Magnet > 0) this.activeEffects.Magnet--;
       if (this.activeEffects.Freeze > 0) this.activeEffects.Freeze--;
-      if (this.activeEffects.BigBasket > 0) this.activeEffects.BigBasket--;
 
-      if (this.timeLimit <= 0) {
-        this.stop();
+      if (this.activeEffects.Reverse > 0) {
+        this.activeEffects.Reverse--;
+        if (this.activeEffects.Reverse <= 0 && this.onReverseEffect) {
+          this.onReverseEffect(false); // End effect
+        }
       }
+
+      if (this.timeLimit <= 0) this.stop();
     }, 1000);
   }
+
+  activateReverse() {
+    this.activeEffects.Reverse = 5; // 5 Seconds
+    if (this.onReverseEffect) this.onReverseEffect(true);
+  }
+
+  setReverseCallback(cb) { this.onReverseEffect = cb; }
 
   clearTimer() {
     if (this.gameTimer) {
@@ -152,7 +133,7 @@ class GameEngine {
 
     // 1. Calculate Speeds
     let speedMult = 1;
-    if (this.isBoosted) speedMult *= 3; // 3x Boost
+    if (this.isBoosted) speedMult *= 2; // 2x Boost (Reduced from 3x)
     if (this.activeEffects.Freeze > 0) speedMult *= 0.5; // Freeze slows down
 
     const currentSpeed = this.itemSpeed * speedMult;
@@ -209,6 +190,20 @@ class GameEngine {
     return false; // Left-Right are not adjacent
   }
 
+  triggerAnnihilate() {
+    if (!this.isGameActive) return;
+    const now = performance.now();
+    const cooldown = 15000;
+    if (now - this.lastAnnihilateTime < cooldown) return; // Cooling down
+
+    // Execute Annihilation
+    this.items = []; // Clear all items
+    this.addScore(500); // Bonus for skill
+    this.lastAnnihilateTime = now;
+
+    // Visual effect or sound could trigger here
+  }
+
   spawnItem() {
     const lanes = ["Left", "Center", "Right"];
     // Shuffle
@@ -234,27 +229,40 @@ class GameEngine {
     let type = "Apple";
     const rand = Math.random();
 
-    // PowerUps (15% chance total)
-    if (rand > 0.85) {
-      const pRand = Math.random();
-      if (pRand < 0.25) type = "Magnet";
-      else if (pRand < 0.5) type = "Shield";
-      else if (pRand < 0.75) type = "Freeze";
-      else type = "BigBasket";
+    // Warp (Black Hole) - 0.01% chance (Super Hidden)
+    if (Math.random() > 0.9999) {
+      this.items.push({
+        lane: selectedLane,
+        type: "Warp",
+        y: -50,
+        w: 40,
+        h: 40
+      });
+      return;
+    }
 
-      // Keep Laser Item rare? or merge it. Let's make "Laser" separate logic or just give it with Shield?
-      // User asked for "All power ups I thought of".
-      // Let's add the "Laser" granting item as super rare additional chance.
-      if (!this.hasLaser && Math.random() > 0.8) {
-        type = "LaserGun"; // New explicit type for Laser
-      }
+    // PowerUps (Very Rare)
+    const now = performance.now();
+    const timeSinceLastPowerUp = now - this.lastPowerUpSpawnTime;
+    const powerUpCooldown = 10000;
+
+    if (rand > 0.99 && timeSinceLastPowerUp > powerUpCooldown) {
+      const pRand = Math.random();
+      if (pRand < 0.4) type = "Magnet";
+      else if (pRand < 0.8) type = "Shield";
+      else type = "Freeze";
+
+      if (!this.hasLaser && Math.random() > 0.9) type = "LaserGun";
+
+      this.lastPowerUpSpawnTime = now;
     } else {
-      // Fruits & Bombs
-      if (rand < 0.25) type = "Bomb";
-      else if (rand < 0.45) type = "Banana";
-      else if (rand < 0.60) type = "Grape";
-      else if (rand < 0.75) type = "Orange";
-      else type = "Apple"; // Watermelon, etc.
+      // Fruits & Bombs & Debuffs
+      if (rand < 0.30) type = "Bomb";
+      else if (rand < 0.35) type = "Reverse"; // New Debuff (5%)
+      else if (rand < 0.55) type = "Banana";
+      else if (rand < 0.70) type = "Grape";
+      else if (rand < 0.85) type = "Orange";
+      else type = "Apple";
     }
 
     this.items.push({
@@ -270,9 +278,8 @@ class GameEngine {
     const playerY = this.canvasHeight - 60;
 
     // Effective Player Width
-    // Base is small (40px). Big Basket makes it large (100px)
-    let playerHitWidth = 40;
-    if (this.activeEffects.BigBasket > 0) playerHitWidth = 120; // Huge
+    // Base is small (40px).
+    const playerHitWidth = 40;
 
     for (let i = this.items.length - 1; i >= 0; i--) {
       const item = this.items[i];
@@ -285,20 +292,9 @@ class GameEngine {
       // Check Lane Alignment
       let isHit = false;
 
-      if (this.activeEffects.BigBasket > 0) {
-        // Spatial collision (Lane doesn't matter as much if huge)
-        // Just check distance
-        const laneWidth = this.canvasWidth / 3;
-        const playerX = this.getLaneX(this.playerPos, laneWidth);
-        const itemX = this.getLaneX(item.lane, laneWidth);
-        if (Math.abs(playerX - itemX) < playerHitWidth / 2 + 20) { // Rough check
-          if (item.y + item.h >= playerY && item.y < playerY + 50) isHit = true;
-        }
-      } else {
-        // Standard Lane Logic
-        if (item.lane === this.playerPos && item.y + item.h >= playerY && item.y < playerY + 50) {
-          isHit = true;
-        }
+      // Standard Lane Logic
+      if (item.lane === this.playerPos && item.y + item.h >= playerY && item.y < playerY + 50) {
+        isHit = true;
       }
 
       if (isHit) {
@@ -336,6 +332,10 @@ class GameEngine {
       } else {
         this.stop();
       }
+    } else if (item.type === "Reverse") {
+      this.activateReverse();
+    } else if (item.type === "Warp") {
+      this.addScore(5000);
     } else if (["Apple", "Banana", "Grape", "Orange"].includes(item.type)) {
       let pts = 100;
       if (item.type === "Banana") pts = 200;
@@ -349,20 +349,17 @@ class GameEngine {
   }
 
   activatePowerUp(type) {
-    const duration = 10; // 10 seconds
-
-    if (type === "Magnet") this.activeEffects.Magnet = duration;
+    if (type === "Magnet") this.activeEffects.Magnet = 3;
     if (type === "Shield") this.activeEffects.Shield = true;
-    if (type === "Freeze") this.activeEffects.Freeze = duration;
-    if (type === "BigBasket") this.activeEffects.BigBasket = duration;
+    if (type === "Freeze") this.activeEffects.Freeze = 3;
 
     if (type === "LaserGun") this.hasLaser = true;
   }
 
   addScore(points) {
     this.score += points;
-    // Fast leveling
-    if (Math.floor(this.score / 1500) + 1 > this.level) {
+    // Fast leveling (Every 500 points)
+    if (Math.floor(this.score / 500) + 1 > this.level) {
       this.level++;
       this.itemSpeed += 0.5;
       this.itemInterval = Math.max(800, this.itemInterval - 100);
@@ -422,8 +419,9 @@ class GameEngine {
       if (item.type === "Magnet") icon = "🧲";
       if (item.type === "Shield") icon = "🛡️";
       if (item.type === "Freeze") icon = "❄️";
-      if (item.type === "BigBasket") icon = "🍄";
-      if (item.type === "LaserGun") icon = "🔫"; // Laser Gun Item
+      if (item.type === "Reverse") icon = "🙃"; // Debuff
+      if (item.type === "Warp") icon = "⚫"; // Hidden
+      if (item.type === "LaserGun") icon = "🔫";
 
       ctx.fillText(icon, x - 15, item.y + 30);
     });
@@ -433,9 +431,8 @@ class GameEngine {
     let playerX = this.getLaneX(this.playerPos, laneWidth);
     let playerY = this.canvasHeight - 60;
 
-    // Scale for Big Basket
+    // Scale
     let scale = 1.0;
-    if (this.activeEffects.BigBasket > 0) scale = 2.0; // BIG
 
     ctx.save();
     ctx.translate(playerX, playerY);
@@ -502,12 +499,24 @@ class GameEngine {
       yPos += 30;
     };
 
-    if (this.isBoosted) drawStatus("⚡ 3배속!", "#FF4500");
+    if (this.isBoosted) drawStatus("⚡ 2배속!", "#FF4500");
     if (this.activeEffects.Magnet > 0) drawStatus(`🧲 자석 (${this.activeEffects.Magnet}s)`, "#FFA500");
     if (this.activeEffects.Freeze > 0) drawStatus(`❄️ 시간동결 (${this.activeEffects.Freeze}s)`, "#00FFFF");
     if (this.activeEffects.BigBasket > 0) drawStatus(`🍄 거대화 (${this.activeEffects.BigBasket}s)`, "#FF69B4");
     if (this.activeEffects.Shield) drawStatus(`🛡️ 쉴드 ON`, "#4169E1");
     if (this.hasLaser) drawStatus(`🔫 레이저 장착`, "#00FF00");
+
+    // Annihilate Skill Status
+    const now = performance.now();
+    const annCooldown = 15000;
+    const timeSinceAnn = now - this.lastAnnihilateTime;
+
+    if (timeSinceAnn >= annCooldown) {
+      drawStatus(`🔥 전멸 가능 (Z키)`, "#FF0000");
+    } else {
+      const waitT = Math.ceil((annCooldown - timeSinceAnn) / 1000);
+      drawStatus(`⏳ 전멸 쿨타임 (${waitT}s)`, "#888");
+    }
 
     // Bottom Right: Time Limit
     if (this.timeLimit > 0) {

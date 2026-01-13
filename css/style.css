@@ -150,6 +150,11 @@ canvas {
   color: #ddd;
 }
 
+.reverse-screen {
+  transform: rotate(180deg);
+  transition: transform 0.5s;
+}
+
 .control-btn {
   padding: 12px 25px;
   font-size: 16px;
