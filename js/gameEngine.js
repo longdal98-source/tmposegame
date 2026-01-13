@@ -487,12 +487,14 @@ class GameEngine {
   }
 
   drawUI(ctx) {
+    // Top Left: Score & Level
+    ctx.textAlign = "left";
     ctx.fillStyle = "white";
     ctx.font = "20px Arial";
     ctx.fillText(`Score: ${this.score}`, 10, 30);
     ctx.fillText(`Level: ${this.level}`, 10, 60);
 
-    // Active Effects UI
+    // Active Effects (Left Side)
     let yPos = 100;
     const drawStatus = (text, color) => {
       ctx.fillStyle = color;
@@ -506,6 +508,18 @@ class GameEngine {
     if (this.activeEffects.BigBasket > 0) drawStatus(`🍄 거대화 (${this.activeEffects.BigBasket}s)`, "#FF69B4");
     if (this.activeEffects.Shield) drawStatus(`🛡️ 쉴드 ON`, "#4169E1");
     if (this.hasLaser) drawStatus(`🔫 레이저 장착`, "#00FF00");
+
+    // Bottom Right: Time Limit
+    if (this.timeLimit > 0) {
+      ctx.textAlign = "right";
+      ctx.font = "bold 30px Arial";
+      if (this.timeLimit <= 10) ctx.fillStyle = "red";
+      else ctx.fillStyle = "white";
+
+      ctx.fillText(`Time: ${this.timeLimit}`, this.canvasWidth - 20, this.canvasHeight - 20);
+    }
+
+    ctx.textAlign = "left";
   }
 
   drawGameOver(ctx) {
