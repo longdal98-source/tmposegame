@@ -16,8 +16,9 @@
     </header>
 
     <div class="game-area">
-      <!-- Webcam Feed (Hidden) -->
-      <div id="webcam-container" class="canvas-wrapper" style="display: none;">
+      <!-- Webcam Feed (Hidden but Active) -->
+      <div id="webcam-container" class="canvas-wrapper"
+        style="position: absolute; opacity: 0; pointer-events: none; z-index: -1;">
         <div class="canvas-label">📷 AI Eye</div>
         <!-- Webcam canvas will be appended here by JS -->
         <div id="max-prediction" class="overlay-text">대기 중...</div>
@@ -31,17 +32,16 @@
         <!-- Game Title / Start Screen Overlay -->
         <div id="game-overlay" class="game-overlay">
           <h1>Falling Fruit Catcher</h1>
-          <p>🍎 하늘에서 떨어지는 과일을 받아라! 🍎</p>
 
           <div class="control-select-box">
-            <h3>🕹️ 조작 방식 선택</h3>
+            <h3>조작 방식 선택</h3>
             <button id="btn-webcam" class="control-btn selected">📷 카메라 (Pose)</button>
             <button id="btn-keyboard" class="control-btn">⌨️ 키보드 (Arrow)</button>
           </div>
 
-          <div class="start-prompt">
-            <h2>시작</h2>
-            <p>(Click to Start)</p>
+          <div class="start-btn-container">
+            <button id="btn-game-start" class="start-btn">게임 시작</button>
+            <p id="loading-text" style="display:none; color: yellow; margin-top: 10px;">카메라 로딩 중...</p>
           </div>
         </div>
       </div>
